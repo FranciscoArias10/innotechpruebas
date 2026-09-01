@@ -254,6 +254,6 @@ curl -X GET http://127.0.0.1:8000/api/v1_0_0/chat-ia/config/
 
 | Archivo | Descripción |
 |---------|-------------|
-| [views.py](api/v1_0_0/chat_ia/views.py) | Implementación de `PublicConfigView` |
-| [urls.py](api/v1_0_0/chat_ia/urls.py) | Registro de URL `/config/` |
-| [my_base.py](base/my_base.py) | Configuración fuente de valores |
+| `api/v1_0_0/chat_ia/views.py` | Implementación de `PublicConfigView` |
+| `api/v1_0_0/chat_ia/urls.py` | Registro de URL `/config/` |
+| `base/my_base.py` | Configuración fuente de valores |

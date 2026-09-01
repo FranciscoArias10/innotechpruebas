@@ -563,9 +563,9 @@ async function logout() {
 
 | Archivo | Descripción |
 |---------|-------------|
-| [urls.py](api/v1_0_0/auth/urls.py) | Definición de rutas |
-| [views.py](api/v1_0_0/auth/views.py) | Vistas que delegan a controllers |
-| [controller.py](api/v1_0_0/auth/controller.py) | Controladores de endpoints |
-| [service.py](api/v1_0_0/auth/service.py) | Lógica de negocio |
-| [serializer.py](api/v1_0_0/auth/serializer.py) | Serialización/validación |
-| [my_base.py](base/my_base.py#L94-L129) | Configuración JWT (`MY_SIMPLE_JWT`) |
+| `api/v1_0_0/auth/urls.py` | Definición de rutas |
+| `api/v1_0_0/auth/views.py` | Vistas que delegan a controllers |
+| `api/v1_0_0/auth/controller.py` | Controladores de endpoints |
+| `api/v1_0_0/auth/service.py` | Lógica de negocio |
+| `api/v1_0_0/auth/serializer.py` | Serialización/validación |
+| `base/my_base.py#L94-L129` | Configuración JWT (`MY_SIMPLE_JWT`) |

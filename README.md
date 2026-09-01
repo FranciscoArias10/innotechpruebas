@@ -33,6 +33,10 @@ Trabajas, y cuando esté lista abres un pull request. Nadie aprueba su propio PR
 
 ## Arranque
 
+Necesitan **Python 3.11**, que es la versión del sistema real. Compruébenlo con
+`python --version` antes de crear el entorno: con otra versión, pip puede
+instalar dependencias distintas y el código se comporta diferente al integrarse.
+
 ```bash
 python -m venv venv
 venv\Scripts\activate          # Windows
@@ -59,6 +63,17 @@ Si las 5 pruebas pasan, el entorno está listo. Levanten el servidor con
 | `docs/` | Cómo trabajar aquí | — |
 
 La regla de oro: **si está en `app/`, viaja. Si no, es andamio.**
+
+## Sobre el trabajo que hagan aquí
+
+Todo lo que se escriba en este repositorio pertenece a la institución y se
+integra a su sistema. No es un proyecto personal ni material de portafolio
+publicable, y el contenido del repositorio —incluidas las especificaciones en
+`specs-originales/`— es confidencial.
+
+Lo concreto que se espera: no publicarlo, no copiarlo a repositorios propios y
+no compartirlo fuera del equipo. Los detalles están en el convenio de pasantía;
+esto es solo el recordatorio en el lugar donde van a trabajar.
 
 ## Por dónde seguir
 
