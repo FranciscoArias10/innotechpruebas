@@ -13,12 +13,22 @@ están aprendiendo Django sobre la marcha, sumen entre 40 y 60 horas al total.
 Ninguna de estas tareas toca el sistema. Sirven para levantar la red de seguridad
 que hoy no existe.
 
-### T1 · Auditoría del sobre de respuesta · 4–6 h
-Recorrer las 12 especificaciones del sistema y listar cuáles dicen `success` y
-cuáles `isSuccess`. Ya sabemos que son 7 y 6, y que `SUBJECT_GRADES` usa las dos.
+### T1 · Auditoría del sobre de respuesta · RESUELTA
 
-**Entregable:** tabla endpoint → qué dice el documento → qué devuelve la API.
-**Listo cuando:** están las 12 revisadas y la tabla dice cuál corregir.
+**Está hecha, a propósito.** Es el ejemplo de referencia: así se ve una entrega
+terminada en este equipo. Léanla antes de empezar T2.
+
+→ [docs/hallazgos/T01-auditoria-sobre.md](hallazgos/T01-auditoria-sobre.md)
+
+Fíjense en cuatro cosas, porque se esperan en todas sus entregas:
+
+1. **El método es reproducible.** Van los comandos, no solo el resultado.
+2. **La conclusión está verificada por dos lados** — lo que dice el documento y
+   lo que hace el código — y se buscaron activamente excepciones.
+3. **Dice qué NO se revisó.** Un informe que no acota su alcance invita a asumir
+   de más.
+4. **Recomienda y da la razón.** «Corregir los documentos, no el código, porque
+   hay clientes instalados» es una recomendación. «Está mal» no lo es.
 
 ### T2 · Primer OpenAPI: autenticación · 6–10 h
 Formalizar `AUTH_API_SPEC.md` (571 líneas: sign-in, refresh, recuperación de
