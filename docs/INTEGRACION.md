@@ -3,6 +3,20 @@
 > Este documento no es para los pasantes. Es el procedimiento para llevar su
 > trabajo al sistema real.
 
+## La rama de destino es `pruebas`
+
+> **`main` no es el tronco de este proyecto.** Quedó detenida el 23 de junio de 2026
+> y está **608 commits por detrás**. El flujo real es:
+>
+> ```
+> ramas por desarrollador  ->  pruebas  ->  produccion
+> (freddy, jaione, eder...)     (integración)   (despliegue)
+> ```
+>
+> Todo lo que se integre entra en `pruebas` y sale a `produccion` en el
+> siguiente release. Clonar o ramificar desde `main` significa trabajar sobre
+> una foto vieja del sistema.
+
 ## La idea en una frase
 
 Su código importa `sige_ports`. Aquí ese paquete son dobles; en `sige-ube` es un
@@ -92,6 +106,9 @@ Lista de verificación:
 ### 2. Copiar la app
 
 ```bash
+git -C sige-ube checkout pruebas          # nunca main
+git -C sige-ube pull
+
 cp -r sige-ube-api-pasantes/app  sige-ube/pasantes_movil
 rm -rf sige-ube/pasantes_movil/migrations/0*.py
 ```
@@ -138,6 +155,10 @@ Aquí es donde aparece cualquier supuesto falso sobre un puerto. Es el punto del
 diseño: revienta en su máquina, antes de desplegar, no en producción.
 
 ### 7. Desplegar
+
+El cambio queda en `pruebas`. Sale a producción en el siguiente merge de
+`pruebas` a `produccion`, como cualquier otro trabajo del equipo.
+
 
 `migrate` en el servidor. Recuerden que las migraciones no viajan por git: hay
 que generarlas allá o llevarlas a mano, como con cualquier otro cambio de modelo.
