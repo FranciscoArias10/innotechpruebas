@@ -53,7 +53,7 @@ Este endpoint no acepta parámetros.
         "slogan": "Educación de calidad para todos",
         "base_path": "https://sige.example.edu.ec/",
         "email_domain": "example.edu.ec",
-        "phone": "0994390246",
+        "phone": "0999123456",
         "address": "Av. Principal #123, Guayaquil, Ecuador",
         "website_url": "https://example.edu.ec",
         "logo_sign_in": "/media/repositorio/pdf/2024/01/logo-sign-in.png",

@@ -61,16 +61,16 @@ X-Period-ID: <period_id>
 
 ```bash
 # Vista agenda (default)
-curl -X GET "https://sige.jerusalen.edu.ec/api/v1.0.0/student/calendar/" \
+curl -X GET "https://sige.innotech-solutions.com.ec/api/v1.0.0/student/calendar/" \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..." \
   -H "X-Period-ID: 6"
 
 # Vista mensual para diciembre 2025
-curl -X GET "https://sige.jerusalen.edu.ec/api/v1.0.0/student/calendar/?view=month&date=2025-12-01" \
+curl -X GET "https://sige.innotech-solutions.com.ec/api/v1.0.0/student/calendar/?view=month&date=2025-12-01" \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..."
 
 # Filtrar por materia
-curl -X GET "https://sige.jerusalen.edu.ec/api/v1.0.0/student/calendar/?subject_id=45" \
+curl -X GET "https://sige.innotech-solutions.com.ec/api/v1.0.0/student/calendar/?subject_id=45" \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..."
 ```
 
@@ -414,7 +414,7 @@ interface CalendarResponse {
 // services/calendar.service.ts
 import { getAccessToken, getSelectedPeriodId } from './auth.service';
 
-const API_BASE = 'https://sige.jerusalen.edu.ec/api/v1.0.0';
+const API_BASE = 'https://sige.innotech-solutions.com.ec/api/v1.0.0';
 
 interface CalendarParams {
   view?: 'agenda' | 'month' | 'week';

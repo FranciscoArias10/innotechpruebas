@@ -563,9 +563,9 @@ async function logout() {
 
 | Archivo | Descripción |
 |---------|-------------|
-| [urls.py](file:///d:/FELIPAO/Documentos/Developer-Felipe/sige-dic-25/sige-jerusalen/api/v1_0_0/auth/urls.py) | Definición de rutas |
-| [views.py](file:///d:/FELIPAO/Documentos/Developer-Felipe/sige-dic-25/sige-jerusalen/api/v1_0_0/auth/views.py) | Vistas que delegan a controllers |
-| [controller.py](file:///d:/FELIPAO/Documentos/Developer-Felipe/sige-dic-25/sige-jerusalen/api/v1_0_0/auth/controller.py) | Controladores de endpoints |
-| [service.py](file:///d:/FELIPAO/Documentos/Developer-Felipe/sige-dic-25/sige-jerusalen/api/v1_0_0/auth/service.py) | Lógica de negocio |
-| [serializer.py](file:///d:/FELIPAO/Documentos/Developer-Felipe/sige-dic-25/sige-jerusalen/api/v1_0_0/auth/serializer.py) | Serialización/validación |
-| [my_base.py](file:///d:/FELIPAO/Documentos/Developer-Felipe/sige-dic-25/sige-jerusalen/base/my_base.py#L94-L129) | Configuración JWT (`MY_SIMPLE_JWT`) |
+| [urls.py](api/v1_0_0/auth/urls.py) | Definición de rutas |
+| [views.py](api/v1_0_0/auth/views.py) | Vistas que delegan a controllers |
+| [controller.py](api/v1_0_0/auth/controller.py) | Controladores de endpoints |
+| [service.py](api/v1_0_0/auth/service.py) | Lógica de negocio |
+| [serializer.py](api/v1_0_0/auth/serializer.py) | Serialización/validación |
+| [my_base.py](base/my_base.py#L94-L129) | Configuración JWT (`MY_SIMPLE_JWT`) |

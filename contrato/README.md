@@ -13,11 +13,20 @@ La segunda columna es la que faltaba: el sistema tiene 94 archivos de prueba y
 **ninguno** verifica la API. Por eso la app móvil se desactualizó durante meses
 sin que nadie lo notara.
 
+## Nunca contra producción
+
+Schemathesis **genera entradas basura a propósito**: ids negativos, cadenas
+larguísimas, fechas imposibles. Eso es lo que le da valor, y es exactamente lo
+que no se le hace a un servidor con datos reales.
+
+Antes de correrlo, confirmen que `--base-url` apunta a staging. Si tienen duda,
+pregunten en vez de probar.
+
 ## Cómo se corre
 
 ```bash
 schemathesis run ../openapi/device_register.yaml \
-  --base-url https://staging.EJEMPLO/api/v1.0.0 \
+  --base-url https://sige-staging.innotech-solutions.com.ec/api/v1.0.0 \
   -H "Authorization: Bearer $TOKEN" \
   --checks all
 ```

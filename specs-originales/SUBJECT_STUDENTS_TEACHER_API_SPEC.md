@@ -78,7 +78,7 @@ Content-Type: application/json
         "photo_url": "http://localhost:8000/media/imagen_perfil/2024/01/foto.jpg",
         "full_name": "García López Juan Carlos",
         "emails": ["juan.garcia@institucion.edu.ec", "juan@correo.com"],
-        "phone": "0991234567",
+        "phone": "0999654321",
         "enrollment_status": {
           "label": "badge-success",
           "status": "Activo"

@@ -31,7 +31,7 @@ No se requieren headers de autenticación.
 
 ```http
 GET /api/v1_0_0/chat-ia/config/ HTTP/1.1
-Host: sige.jerusalen.edu.ec
+Host: sige.innotech-solutions.com.ec
 Accept: application/json
 ```
 
@@ -126,7 +126,7 @@ class PublicConfigView(APIView):
 
 ```javascript
 // React Native / Flutter
-const response = await fetch('https://sige.jerusalen.edu.ec/api/v1_0_0/chat-ia/config/');
+const response = await fetch('https://sige.innotech-solutions.com.ec/api/v1_0_0/chat-ia/config/');
 const data = await response.json();
 
 // Usar el nombre del asistente en la interfaz
@@ -220,7 +220,7 @@ sequenceDiagram
 
 ```bash
 # Producción
-curl -X GET https://sige.jerusalen.edu.ec/api/v1_0_0/chat-ia/config/
+curl -X GET https://sige.innotech-solutions.com.ec/api/v1_0_0/chat-ia/config/
 
 # Local
 curl -X GET http://127.0.0.1:8000/api/v1_0_0/chat-ia/config/
@@ -254,6 +254,6 @@ curl -X GET http://127.0.0.1:8000/api/v1_0_0/chat-ia/config/
 
 | Archivo | Descripción |
 |---------|-------------|
-| [views.py](file:///d:/FELIPAO/Documentos/Developer-Felipe/sige-dic-25/sige-jerusalen/api/v1_0_0/chat_ia/views.py) | Implementación de `PublicConfigView` |
-| [urls.py](file:///d:/FELIPAO/Documentos/Developer-Felipe/sige-dic-25/sige-jerusalen/api/v1_0_0/chat_ia/urls.py) | Registro de URL `/config/` |
-| [my_base.py](file:///d:/FELIPAO/Documentos/Developer-Felipe/sige-dic-25/sige-jerusalen/base/my_base.py) | Configuración fuente de valores |
+| [views.py](api/v1_0_0/chat_ia/views.py) | Implementación de `PublicConfigView` |
+| [urls.py](api/v1_0_0/chat_ia/urls.py) | Registro de URL `/config/` |
+| [my_base.py](base/my_base.py) | Configuración fuente de valores |
