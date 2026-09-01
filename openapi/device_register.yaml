@@ -15,7 +15,7 @@ info:
     sistema dicen `success` y están equivocadas.
 
 servers:
-  - url: https://sige-staging.innotech-solutions.com.ec/api/v1.0.0
+  - url: https://sige.innotech-solutions.com.ec/api/v1.0.0
     description: Staging (datos sintéticos)
 
 components:

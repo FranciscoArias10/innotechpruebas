@@ -26,7 +26,7 @@ pregunten en vez de probar.
 
 ```bash
 schemathesis run ../openapi/device_register.yaml \
-  --base-url https://sige-staging.innotech-solutions.com.ec/api/v1.0.0 \
+  --base-url https://sige.innotech-solutions.com.ec/api/v1.0.0 \
   -H "Authorization: Bearer $TOKEN" \
   --checks all
 ```
