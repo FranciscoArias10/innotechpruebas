@@ -28,7 +28,7 @@ INSTALLED_APPS = [
     'rest_framework',
 
     # La app de ustedes. Es lo unico de este proyecto que viaja a sige-ube.
-    'app',
+    'app.apps.AppPasantesConfig',
 ]
 
 MIDDLEWARE = [
