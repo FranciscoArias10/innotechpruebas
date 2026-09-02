@@ -1,0 +1,184 @@
+openapi: 3.0.3
+info:
+  title: SIGE-UBE — Gestión de Sesiones de ChatIA
+  version: 1.0.0
+  description: |
+    Endpoints para listar, renombrar y eliminar (soft delete) sesiones de chat con la IA.
+
+    **El sobre de respuesta es siempre el mismo:**
+    `{"isSuccess": true, "message": "texto", "data": {}}`
+
+servers:
+  - url: https://sige.innotech-solutions.com.ec/api/v1.0.0
+    description: Staging (datos sintéticos)
+  - url: http://localhost:8000/api/v1.0.0
+    description: Servidor Local
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Sobre:
+      type: object
+      required: [isSuccess, message]
+      properties:
+        isSuccess: { type: boolean, example: true }
+        message: { type: string, nullable: true, example: null }
+
+    SesionChatIA:
+      type: object
+      required: [id, title, status, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid, example: "a3b8e90c-1234-5678-90ab-cdef12345678" }
+        title: { type: string, example: "Consulta sobre horario" }
+        status: { type: string, enum: [active, deleted], example: "active" }
+        created_at: { type: string, format: date-time, example: "2025-12-31T10:00:00Z" }
+        updated_at: { type: string, format: date-time, example: "2025-12-31T10:30:00Z" }
+
+    SesionEliminadaData:
+      type: object
+      required: [id, status, deleted_at]
+      properties:
+        id: { type: string, format: uuid, example: "a3b8e90c-1234-5678-90ab-cdef12345678" }
+        status: { type: string, example: "deleted" }
+        deleted_at: { type: string, format: date-time, example: "2025-12-31T16:30:00Z" }
+
+    RespuestaListarSesiones:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/SesionChatIA' }
+
+    RespuestaRenombrarSesion:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          required: [data]
+          properties:
+            data: { $ref: '#/components/schemas/SesionChatIA' }
+
+    RespuestaEliminarSesion:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          required: [data]
+          properties:
+            data: { $ref: '#/components/schemas/SesionEliminadaData' }
+
+    RespuestaError:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          properties:
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items: { type: string }
+
+paths:
+  /chat-ia/sessions/:
+    get:
+      summary: Lista de sesiones de chat activas
+      description: |
+        Retorna la lista de conversaciones activas del usuario autenticado (excluye las eliminadas por soft-delete).
+      operationId: listarSesionesChat
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de sesiones obtenida exitosamente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaListarSesiones' }
+        '401':
+          description: No autenticado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '500':
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+
+  /chat-ia/sessions/{session_id}/:
+    patch:
+      summary: Renombrar título de una sesión
+      description: |
+        Permite actualizar el título personalizado de una sesión activa (máximo 100 caracteres).
+      operationId: renombrarSesionChat
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string, maxLength: 100, example: "Mi título personalizado" }
+      responses:
+        '200':
+          description: Título de la sesión actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaRenombrarSesion' }
+        '400':
+          description: Título requerido o excede 100 caracteres
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '401':
+          description: No autenticado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '410':
+          description: La sesión fue eliminada (SESSION_DELETED)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+
+    delete:
+      summary: Eliminar una sesión de chat (Soft delete)
+      description: |
+        Marca la sesión como eliminada (`status='deleted'`). Endpoint idempotente.
+      operationId: eliminarSesionChat
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Sesión eliminada exitosamente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaEliminarSesion' }
+        '401':
+          description: No autenticado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '500':
+          description: Error interno al eliminar sesión
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }

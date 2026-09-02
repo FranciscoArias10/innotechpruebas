@@ -1,0 +1,324 @@
+openapi: 3.0.3
+info:
+  title: SIGE-UBE — Planificación de Clase
+  version: 1.0.0
+  description: |
+    Endpoint de planificación semanal de asignaturas (unidades, temas, recursos y actividades con paginación).
+
+    **El sobre de respuesta es siempre el mismo:**
+    `{"isSuccess": true, "message": null, "data": {}}`
+
+servers:
+  - url: https://sige.innotech-solutions.com.ec/api/v1.0.0
+    description: Staging (datos sintéticos)
+  - url: http://localhost:8000/api/v1.0.0
+    description: Servidor Local
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    XPeriodIDHeader:
+      name: X-Period-ID
+      in: header
+      required: true
+      description: ID del periodo lectivo.
+      schema:
+        type: integer
+        example: 6
+
+    MateriaAsignadaIDPath:
+      name: materia_asignada_id
+      in: path
+      required: true
+      description: ID de la MateriaAsignada.
+      schema:
+        type: integer
+        example: 12345
+
+  schemas:
+    Sobre:
+      type: object
+      required: [isSuccess, message]
+      properties:
+        isSuccess: { type: boolean, example: true }
+        message: { type: string, nullable: true, example: null }
+
+    RecursoTipo:
+      type: object
+      required: [code, name, icon_url]
+      properties:
+        code: { type: string, enum: [video, link, pdf, doc, excel, ppt, image, file, folder], example: "video" }
+        name: { type: string, example: "Video" }
+        icon_url: { type: string, nullable: true, example: "/media/icono/video.svg" }
+
+    RecursoLink:
+      type: object
+      required: [id, name, url, type, type_icon]
+      properties:
+        id: { type: integer, example: 1 }
+        name: { type: string, example: "OBSERVE EL VIDEO NOCIONES DEL TIEMPO" }
+        url: { type: string, nullable: true, example: "https://youtube.com/..." }
+        type: { $ref: '#/components/schemas/RecursoTipo' }
+        type_icon: { type: string, nullable: true, example: "/media/icono/link.svg" }
+
+    RecursoArchivo:
+      type: object
+      required: [id, name, download_url, type, type_icon]
+      properties:
+        id: { type: integer, example: 1 }
+        name: { type: string, example: "MATERIAL DE APOYO.pdf" }
+        download_url: { type: string, nullable: true, example: "/download/..." }
+        type: { $ref: '#/components/schemas/RecursoTipo' }
+        type_icon: { type: string, nullable: true, example: "/media/icono/pdf.svg" }
+
+    RecursoCarpeta:
+      type: object
+      required: [id, name, type, type_icon]
+      properties:
+        id: { type: integer, example: 1 }
+        name: { type: string, example: "Material complementario" }
+        type: { $ref: '#/components/schemas/RecursoTipo' }
+        type_icon: { type: string, nullable: true, example: "/media/icono/folder.svg" }
+
+    RecursosContenedor:
+      type: object
+      required: [links, files, folders]
+      properties:
+        links:
+          type: array
+          items: { $ref: '#/components/schemas/RecursoLink' }
+        files:
+          type: array
+          items: { $ref: '#/components/schemas/RecursoArchivo' }
+        folders:
+          type: array
+          items: { $ref: '#/components/schemas/RecursoCarpeta' }
+
+    SubtemaInfo:
+      type: object
+      required: [id, name, content]
+      properties:
+        id: { type: integer, example: 1 }
+        name: { type: string, example: "MEDIDAS DE TIEMPO" }
+        content: { type: string, example: "<html>..." }
+
+    TemaInfo:
+      type: object
+      required: [id, name, content, subtopics]
+      properties:
+        id: { type: integer, example: 1 }
+        name: { type: string, example: "SOY EL SEÑOR METRO" }
+        content: { type: string, example: "<html>..." }
+        subtopics:
+          type: array
+          items: { $ref: '#/components/schemas/SubtemaInfo' }
+
+    UnidadInfo:
+      type: object
+      required: [id, name, objective, topics]
+      properties:
+        id: { type: integer, example: 1 }
+        name: { type: string, example: "UNIDAD # 5" }
+        objective: { type: string, example: "Comprender los conceptos de medición..." }
+        topics:
+          type: array
+          items: { $ref: '#/components/schemas/TemaInfo' }
+
+    PlanificacionContenido:
+      type: object
+      required: [units, bibliographies, methodological_strategies, resources]
+      properties:
+        units:
+          type: array
+          items: { $ref: '#/components/schemas/UnidadInfo' }
+        bibliographies:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer, example: 1 }
+              name: { type: string, example: "Libro de Matemáticas 8vo" }
+        methodological_strategies:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer, example: 1 }
+              name: { type: string, example: "Trabajo en grupo" }
+        resources: { $ref: '#/components/schemas/RecursosContenedor' }
+
+    ActividadEstado:
+      type: object
+      required: [code, label]
+      properties:
+        code: { type: string, enum: [pending, submitted, overdue], example: "pending" }
+        label: { type: string, example: "Pendiente" }
+
+    ActividadPlanificada:
+      type: object
+      required: [id, name, type, start_date, end_date, status, has_attachment, attachment_url]
+      properties:
+        id: { type: integer, example: 1 }
+        name: { type: string, example: "ACTIVIDAD EN CLASE EXPUESTA EN UNA HOJA DE TRABAJO" }
+        type:
+          type: object
+          properties:
+            id: { type: integer, example: 1 }
+            name: { type: string, example: "Actividad" }
+            icon_url: { type: string, nullable: true, example: "/media/icono/actividad.svg" }
+        start_date: { type: string, format: date-time, example: "2025-11-18T07:00:00-05:00" }
+        end_date: { type: string, format: date-time, example: "2025-11-18T12:00:00-05:00" }
+        status: { $ref: '#/components/schemas/ActividadEstado' }
+        has_attachment: { type: boolean, example: true }
+        attachment_url: { type: string, nullable: true, example: "/download/..." }
+
+    ActividadesPaginadas:
+      type: object
+      required: [items, total, pending_count, limit, offset]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ActividadPlanificada' }
+        total: { type: integer, example: 3 }
+        pending_count: { type: integer, example: 1 }
+        limit: { type: integer, example: 50 }
+        offset: { type: integer, example: 0 }
+
+    NavegacionSemana:
+      type: object
+      required: [total_weeks, current_week, previous_week, next_week]
+      properties:
+        total_weeks: { type: integer, example: 43 }
+        current_week: { type: integer, nullable: true, example: 3 }
+        previous_week: { type: integer, nullable: true, example: 2 }
+        next_week: { type: integer, nullable: true, example: 4 }
+
+    SemanaDetalle:
+      type: object
+      required: [order, name, start_date, end_date, has_previous, has_next, pending_activities]
+      properties:
+        order: { type: integer, example: 3 }
+        name: { type: string, example: "SEMANA 3 TT" }
+        start_date: { type: string, format: date, nullable: true, example: "2025-11-17" }
+        end_date: { type: string, format: date, nullable: true, example: "2025-11-23" }
+        has_previous: { type: boolean, example: true }
+        has_next: { type: boolean, example: true }
+        pending_activities: { type: integer, example: 1 }
+
+    MateriaHeader:
+      type: object
+      required: [id, name, level, parallel, start_date, end_date, total_weeks, pending_activities]
+      properties:
+        id: { type: integer, example: 12345 }
+        name: { type: string, example: "MATEMÁTICAS" }
+        level: { type: string, example: "8vo EGB" }
+        parallel: { type: string, example: "A" }
+        start_date: { type: string, format: date, nullable: true, example: "2025-04-16" }
+        end_date: { type: string, format: date, nullable: true, example: "2026-02-28" }
+        total_weeks: { type: integer, example: 43 }
+        pending_activities: { type: integer, example: 5 }
+
+    ClassPlanningData:
+      type: object
+      required: [subject, week, content, activities, navigation]
+      properties:
+        subject: { $ref: '#/components/schemas/MateriaHeader' }
+        week: { $ref: '#/components/schemas/SemanaDetalle', nullable: true }
+        content: { $ref: '#/components/schemas/PlanificacionContenido', nullable: true }
+        activities: { $ref: '#/components/schemas/ActividadesPaginadas' }
+        navigation: { $ref: '#/components/schemas/NavegacionSemana' }
+
+    RespuestaClassPlanning:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          required: [data]
+          properties:
+            data: { $ref: '#/components/schemas/ClassPlanningData' }
+
+    RespuestaError:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          properties:
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items: { type: string }
+
+paths:
+  /student/subjects/{materia_asignada_id}/planning/:
+    get:
+      summary: Planificación semanal de clases de una materia
+      description: |
+        Retorna los contenidos, unidades, recursos, actividades y controles de navegación de la planificación de clase de una semana dada.
+      operationId: obtenerPlanificacionClase
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MateriaAsignadaIDPath'
+        - $ref: '#/components/parameters/XPeriodIDHeader'
+        - name: week
+          in: query
+          required: false
+          description: Número de la semana (1-based). Prioridad sobre fecha.
+          schema:
+            type: integer
+            example: 3
+        - name: date
+          in: query
+          required: false
+          description: Fecha ISO 8601 de referencia.
+          schema:
+            type: string
+            format: date
+            example: "2025-11-18"
+        - name: activities_limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+        - name: activities_offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Planificación semanal obtenida exitosamente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaClassPlanning' }
+        '400':
+          description: Parámetros inválidos o falta header X-Period-ID
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '401':
+          description: No autenticado o token expirado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '403':
+          description: Perfil o permisos insuficientes (IDOR check)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '404':
+          description: Materia o semana no encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '500':
+          description: Error interno al obtener planificación
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
