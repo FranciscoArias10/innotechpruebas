@@ -11,6 +11,7 @@ Cubre:
 """
 from django.contrib.auth.models import User
 from django.urls import reverse
+from django.core.cache import cache
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -20,6 +21,7 @@ from app.models import FeedbackMovil
 class FeedbackTests(APITestCase):
 
     def setUp(self):
+        cache.clear()
         self.usuario = User.objects.create_user(username='alumno_test', password='password123')
         self.url = reverse('movil-feedback')
 

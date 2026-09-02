@@ -15,4 +15,6 @@ class FeedbackRateThrottle(UserRateThrottle):
     Límite de tasa para el endpoint de envío de feedback.
     Evita abuso y spam de comentarios a 2 por hora por usuario.
     """
+    scope = 'feedback'
     rate = '2/hour'
+
