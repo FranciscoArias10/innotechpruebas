@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from rest_framework import serializers
 
-from app.models import DispositivoRegistrado, VersionAppMovil
+from app.models import DispositivoRegistrado, VersionAppMovil, PreferenciaNotificacion
 
 
 class DispositivoRegistroSerializer(serializers.Serializer):
@@ -32,5 +32,21 @@ class VersionAppMovilSerializer(serializers.ModelSerializer):
     """Contrato de salida para /movil/app/version/"""
 
     class Meta:
-        model = VersionAppMovil  # Need to import VersionAppMovil at the top
+        model = VersionAppMovil
         fields = ('plataforma', 'version_minima', 'version_actual', 'forzar_actualizacion')
+
+
+class PreferenciaNotificacionSerializer(serializers.ModelSerializer):
+    """Contrato de entrada (PUT parcial) y salida (GET/PUT) para /movil/notifications/preferences/."""
+
+    push_enabled = serializers.BooleanField(required=False)
+    grades = serializers.BooleanField(required=False)
+    attendance = serializers.BooleanField(required=False)
+    events = serializers.BooleanField(required=False)
+    announcements = serializers.BooleanField(required=False)
+    tasks = serializers.BooleanField(required=False)
+
+    class Meta:
+        model = PreferenciaNotificacion
+        fields = ('push_enabled', 'grades', 'attendance', 'events', 'announcements', 'tasks')
+

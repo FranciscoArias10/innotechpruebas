@@ -13,8 +13,13 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
-from app.models import DispositivoRegistrado, VersionAppMovil
-from app.serializers import DispositivoRegistroSerializer, DispositivoSalidaSerializer, VersionAppMovilSerializer
+from app.models import DispositivoRegistrado, VersionAppMovil, PreferenciaNotificacion
+from app.serializers import (
+    DispositivoRegistroSerializer,
+    DispositivoSalidaSerializer,
+    VersionAppMovilSerializer,
+    PreferenciaNotificacionSerializer,
+)
 from app.throttling import AppVersionRateThrottle
 from sige_ports import RespuestaApi
 
@@ -103,3 +108,51 @@ class AppVersionView(APIView):
         respuesta.set_data(VersionAppMovilSerializer(version_info).data)
         respuesta.set_status(status.HTTP_200_OK)
         return respuesta.to_dict()
+
+
+class NotificationPreferencesView(APIView):
+    """
+    GET|PUT /api/v1.0.0/movil/notifications/preferences/
+
+    Consulta o actualiza las preferencias de notificaciones del usuario autenticado.
+    El método PUT permite actualización parcial e idempotente.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        respuesta = RespuestaApi()
+        preferencias, _ = PreferenciaNotificacion.objects.get_or_create(usuario=request.user)
+
+        respuesta.set_success(True)
+        respuesta.set_message('Preferencias de notificación recuperadas con éxito.')
+        respuesta.set_data(PreferenciaNotificacionSerializer(preferencias).data)
+        respuesta.set_status(status.HTTP_200_OK)
+        return respuesta.to_dict()
+
+    def put(self, request):
+        respuesta = RespuestaApi()
+        preferencias, _ = PreferenciaNotificacion.objects.get_or_create(usuario=request.user)
+
+        serializer = PreferenciaNotificacionSerializer(preferencias, data=request.data, partial=True)
+        if not serializer.is_valid():
+            respuesta.set_success(False)
+            respuesta.set_message('Los datos enviados no son válidos.')
+            respuesta.set_errors(serializer.errors)
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+            return respuesta.to_dict()
+
+        try:
+            with transaction.atomic():
+                serializer.save()
+        except Exception:
+            respuesta.set_success(False)
+            respuesta.set_message('No se pudieron actualizar las preferencias de notificación.')
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return respuesta.to_dict()
+
+        respuesta.set_success(True)
+        respuesta.set_message('Preferencias de notificación actualizadas con éxito.')
+        respuesta.set_data(serializer.data)
+        respuesta.set_status(status.HTTP_200_OK)
+        return respuesta.to_dict()
+

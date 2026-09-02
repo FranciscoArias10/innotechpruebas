@@ -23,11 +23,51 @@ components:
       properties:
         isSuccess:
           type: boolean
-          example: true
         message:
           type: string
           nullable: true
-          example: Operación realizada con éxito
+    AppVersionInfo:
+      type: object
+      required:
+      - plataforma
+      - version_minima
+      - version_actual
+      - forzar_actualizacion
+      properties:
+        plataforma:
+          type: string
+          enum:
+          - android
+          - ios
+        version_minima:
+          type: string
+          example: 1.0.0
+        version_actual:
+          type: string
+          example: 1.2.0
+        forzar_actualizacion:
+          type: boolean
+          example: false
+    RespuestaAppVersion:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            $ref: '#/components/schemas/AppVersionInfo'
+    RespuestaError:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        properties:
+          errors:
+            type: object
+            additionalProperties:
+              type: array
+              items:
+                type: string
     UsuarioInfo:
       type: object
       required:
@@ -196,17 +236,6 @@ components:
             $ref: '#/components/schemas/RecoverUsernameData'
     RespuestaChangePassword:
       $ref: '#/components/schemas/Sobre'
-    RespuestaError:
-      allOf:
-      - $ref: '#/components/schemas/Sobre'
-      - type: object
-        properties:
-          errors:
-            type: object
-            additionalProperties:
-              type: array
-              items:
-                type: string
     RedesSociales:
       type: object
       properties:
@@ -1139,6 +1168,72 @@ components:
         properties:
           data:
             $ref: '#/components/schemas/Dispositivo'
+    PreferenciaNotificacion:
+      type: object
+      required:
+      - push_enabled
+      - grades
+      - attendance
+      - events
+      - announcements
+      - tasks
+      properties:
+        push_enabled:
+          type: boolean
+          description: Activar o desactivar todas las notificaciones push.
+          example: true
+        grades:
+          type: boolean
+          description: Avisos de nuevas calificaciones y notas.
+          example: true
+        attendance:
+          type: boolean
+          description: Avisos sobre asistencias e inasistencias registradas.
+          example: true
+        events:
+          type: boolean
+          description: Avisos sobre calendario, clases y eventos académicos.
+          example: true
+        announcements:
+          type: boolean
+          description: Comunicados y avisos generales institucionales.
+          example: true
+        tasks:
+          type: boolean
+          description: Recordatorios de tareas y actividades académicas.
+          example: true
+    PreferenciaNotificacionUpdate:
+      type: object
+      description: Cuerpo para actualización parcial de preferencias. Todos los campos
+        son opcionales.
+      properties:
+        push_enabled:
+          type: boolean
+          example: true
+        grades:
+          type: boolean
+          example: false
+        attendance:
+          type: boolean
+          example: true
+        events:
+          type: boolean
+          example: true
+        announcements:
+          type: boolean
+          example: true
+        tasks:
+          type: boolean
+          example: false
+    RespuestaPreferencias:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            $ref: '#/components/schemas/PreferenciaNotificacion'
     EstudianteBase:
       type: object
       required:
@@ -1942,6 +2037,48 @@ components:
         type: integer
         example: 456
 paths:
+  /movil/app/version/:
+    get:
+      summary: Consulta la versión mínima soportada y si requiere actualización forzada.
+      description: 'No requiere autenticación. Retorna la información de versión para
+        la plataforma indicada.
+
+        Se puede pasar la plataforma como query parameter (ej: `?plataforma=android`
+        o `?plataforma=ios`).
+
+        Si no se indica plataforma, por defecto asume `android`.
+
+        '
+      operationId: consultarVersionApp
+      parameters:
+      - name: plataforma
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - android
+          - ios
+          default: android
+      responses:
+        '200':
+          description: Versión recuperada con éxito
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaAppVersion'
+        '400':
+          description: Parámetros inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '429':
+          description: Límite de tasa excedido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
   /auth/sign-in/:
     post:
       summary: Autentica un usuario y devuelve tokens JWT
@@ -2592,6 +2729,67 @@ paths:
                 $ref: '#/components/schemas/RespuestaError'
         '401':
           description: Falta el token JWT o está vencido
+  /movil/notifications/preferences/:
+    get:
+      summary: Consulta las preferencias de notificación del usuario autenticado.
+      description: 'Retorna las preferencias configuradas para el usuario actual.
+
+        Si es la primera consulta del usuario, se inicializan automáticamente con
+        los valores por defecto (todos activados).
+
+        '
+      operationId: consultarPreferenciasNotificacion
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Preferencias recuperadas con éxito.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaPreferencias'
+        '401':
+          description: No autenticado o token vencido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+    put:
+      summary: Actualiza las preferencias de notificación del usuario autenticado.
+      description: 'Permite actualizar parcial e idempotentemente una o más preferencias
+        de notificación.
+
+        Los campos no especificados conservan su valor actual.
+
+        '
+      operationId: actualizarPreferenciasNotificacion
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreferenciaNotificacionUpdate'
+      responses:
+        '200':
+          description: Preferencias actualizadas con éxito.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaPreferencias'
+        '400':
+          description: Datos enviados inválidos (p. ej. tipos no booleanos).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '401':
+          description: No autenticado o token vencido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
   /student/attendance/report/:
     get:
       summary: Reporte de asistencia del estudiante

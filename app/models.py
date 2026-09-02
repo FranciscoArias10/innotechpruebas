@@ -62,3 +62,31 @@ class VersionAppMovil(ModeloBase):
     class Meta:
         verbose_name = u'Versión App Móvil'
         verbose_name_plural = u'Versiones App Móvil'
+
+
+class PreferenciaNotificacion(ModeloBase):
+    """Preferencias de notificación push y avisos para cada usuario."""
+
+    usuario = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='preferencias_notificacion', verbose_name=u'Usuario')
+    push_enabled = models.BooleanField(
+        default=True, verbose_name=u'Notificaciones push habilitadas')
+    grades = models.BooleanField(
+        default=True, verbose_name=u'Avisos de calificaciones y notas')
+    attendance = models.BooleanField(
+        default=True, verbose_name=u'Avisos de asistencia y faltas')
+    events = models.BooleanField(
+        default=True, verbose_name=u'Avisos de calendario y eventos')
+    announcements = models.BooleanField(
+        default=True, verbose_name=u'Avisos y comunicados generales')
+    tasks = models.BooleanField(
+        default=True, verbose_name=u'Avisos de tareas y planificación')
+
+    def __str__(self):
+        return u'Preferencias de %s' % self.usuario
+
+    class Meta:
+        verbose_name = u'Preferencia de notificación'
+        verbose_name_plural = u'Preferencias de notificación'
+

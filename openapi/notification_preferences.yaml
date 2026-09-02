@@ -1,0 +1,155 @@
+openapi: 3.0.3
+info:
+  title: SIGE-UBE — API móvil (Preferencias de Notificación)
+  version: 1.0.0
+  description: |
+    Endpoint para consultar y actualizar las preferencias de notificación de los usuarios móviles.
+    El método PUT es parcial e idempotente.
+
+servers:
+  - url: https://sige.innotech-solutions.com.ec/api/v1.0.0
+    description: Staging (datos sintéticos)
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Sobre:
+      type: object
+      required: [isSuccess, message]
+      properties:
+        isSuccess: { type: boolean }
+        message:   { type: string, nullable: true }
+
+    PreferenciaNotificacion:
+      type: object
+      required: [push_enabled, grades, attendance, events, announcements, tasks]
+      properties:
+        push_enabled:
+          type: boolean
+          description: Activar o desactivar todas las notificaciones push.
+          example: true
+        grades:
+          type: boolean
+          description: Avisos de nuevas calificaciones y notas.
+          example: true
+        attendance:
+          type: boolean
+          description: Avisos sobre asistencias e inasistencias registradas.
+          example: true
+        events:
+          type: boolean
+          description: Avisos sobre calendario, clases y eventos académicos.
+          example: true
+        announcements:
+          type: boolean
+          description: Comunicados y avisos generales institucionales.
+          example: true
+        tasks:
+          type: boolean
+          description: Recordatorios de tareas y actividades académicas.
+          example: true
+
+    PreferenciaNotificacionUpdate:
+      type: object
+      description: Cuerpo para actualización parcial de preferencias. Todos los campos son opcionales.
+      properties:
+        push_enabled:
+          type: boolean
+          example: true
+        grades:
+          type: boolean
+          example: false
+        attendance:
+          type: boolean
+          example: true
+        events:
+          type: boolean
+          example: true
+        announcements:
+          type: boolean
+          example: true
+        tasks:
+          type: boolean
+          example: false
+
+    RespuestaPreferencias:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          required: [data]
+          properties:
+            data: { $ref: '#/components/schemas/PreferenciaNotificacion' }
+
+    RespuestaError:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          properties:
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items: { type: string }
+
+paths:
+  /movil/notifications/preferences/:
+    get:
+      summary: Consulta las preferencias de notificación del usuario autenticado.
+      description: |
+        Retorna las preferencias configuradas para el usuario actual.
+        Si es la primera consulta del usuario, se inicializan automáticamente con los valores por defecto (todos activados).
+      operationId: consultarPreferenciasNotificacion
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Preferencias recuperadas con éxito.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaPreferencias'
+        '401':
+          description: No autenticado o token vencido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+
+    put:
+      summary: Actualiza las preferencias de notificación del usuario autenticado.
+      description: |
+        Permite actualizar parcial e idempotentemente una o más preferencias de notificación.
+        Los campos no especificados conservan su valor actual.
+      operationId: actualizarPreferenciasNotificacion
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreferenciaNotificacionUpdate'
+      responses:
+        '200':
+          description: Preferencias actualizadas con éxito.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaPreferencias'
+        '400':
+          description: Datos enviados inválidos (p. ej. tipos no booleanos).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '401':
+          description: No autenticado o token vencido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
