@@ -264,3 +264,55 @@ class RepresentativeStudentGradesView(APIView):
         respuesta.set_status(status.HTTP_200_OK)
         return respuesta.to_dict()
 
+
+class RepresentativeStudentAttendanceView(APIView):
+    """
+    GET /api/v1.0.0/movil/representative/students/<int:student_id>/attendance/
+
+    Devuelve el consolidado de asistencia de un estudiante.
+    Verifica parentesco mediante portal.representa_a.
+    """
+    permission_classes = [IsAuthenticated, EsRepresentanteDelEstudiante]
+
+    def get(self, request, student_id):
+        respuesta = RespuestaApi()
+
+        periodo_hdr = request.headers.get('X-Period-ID') or request.META.get('HTTP_X_PERIOD_ID')
+        if not periodo_hdr:
+            respuesta.set_success(False)
+            respuesta.set_message('Header X-Period-ID es requerido.')
+            respuesta.set_errors({'X-Period-ID': ['Este header es obligatorio.']})
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+            return respuesta.to_dict()
+
+        try:
+            periodo_id = int(periodo_hdr)
+        except (ValueError, TypeError):
+            respuesta.set_success(False)
+            respuesta.set_message('Header X-Period-ID debe ser entero.')
+            respuesta.set_errors({'X-Period-ID': ['Formato de entero inválido.']})
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+            return respuesta.to_dict()
+
+        try:
+            datos_asistencia = portal.asistencia_de_estudiante(
+                persona_id=student_id,
+                periodo_id=periodo_id
+            )
+        except LookupError:
+            respuesta.set_success(False)
+            respuesta.set_message('Asistencia no encontrada para el estudiante.')
+            respuesta.set_status(status.HTTP_404_NOT_FOUND)
+            return respuesta.to_dict()
+        except Exception:
+            respuesta.set_success(False)
+            respuesta.set_message('Error al obtener asistencia.')
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return respuesta.to_dict()
+
+        respuesta.set_success(True)
+        respuesta.set_message('Asistencia recuperada con éxito.')
+        respuesta.set_data(datos_asistencia)
+        respuesta.set_status(status.HTTP_200_OK)
+        return respuesta.to_dict()
+

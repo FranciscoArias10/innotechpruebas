@@ -13,6 +13,7 @@ from app.views import (
     NotificationPreferencesView,
     FeedbackView,
     RepresentativeStudentGradesView,
+    RepresentativeStudentAttendanceView,
 )
 
 urlpatterns = [
@@ -21,5 +22,6 @@ urlpatterns = [
     path('notifications/preferences/', NotificationPreferencesView.as_view(), name='movil-notification-preferences'),
     path('feedback/', FeedbackView.as_view(), name='movil-feedback'),
     path('representative/students/<int:student_id>/grades/', RepresentativeStudentGradesView.as_view(), name='movil-representative-student-grades'),
+    path('representative/students/<int:student_id>/attendance/', RepresentativeStudentAttendanceView.as_view(), name='movil-representative-student-attendance'),
 ]
 
