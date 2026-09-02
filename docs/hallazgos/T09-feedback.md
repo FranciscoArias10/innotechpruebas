@@ -1,45 +1,98 @@
-# Hallazgos y Ejecución: T09 Feedback Móvil
+# T9 · Endpoint `POST /movil/feedback/`
 
-## Resumen de la Tarea
-- **Endpoint:** `POST /api/v1.0.0/movil/feedback/`
-- **Propósito:** Permitir a los usuarios de la app enviar comentarios, quejas o sugerencias.
-- **Complejidad:** Se requirió implementar un límite de tasa (throttling) estricto (2 peticiones por hora) por usuario para mitigar posibles abusos y spam a la base de datos de la institución.
+| | |
+|---|---|
+| **Estado** | Entregado |
+| **Tiempo** | ~10 h |
+| **Rama** | `T09-feedback` |
+| **Material** | `openapi/feedback.yaml`, `app/models.py`, `app/views.py`, `app/serializers.py`, `app/throttling.py`, `app/tests/test_feedback.py` |
 
-## Decisiones de Arquitectura y Reglas Aplicadas
+## Qué se pedía
 
-1. **Modelado (sige_ports)**:
-   Se creó el modelo `FeedbackMovil` heredando explícitamente de `ModeloBase` (desde `sige_ports`). Se usó `fecha_creacion` (del base) para evitar incompatibilidades con el sistema real. El modelo registra al `usuario`, el `tipo` (Sugerencia, Error, Queja) y el `mensaje`.
+Implementar el endpoint `POST /movil/feedback/` para que los usuarios autenticados puedan enviar sugerencias, quejas o reportes de error desde la aplicación móvil:
+- El formulario es abierto: `tipo` (SUGERENCIA, QUEJA, ERROR) y `mensaje` libre.
+- Requiere autenticación (`IsAuthenticated` vía JWT Bearer).
+- Debe tener un **límite de tasa estricto** por clase propia (`app/throttling.py`), sin tocar `proyecto/settings.py`.
+- Respuestas estandarizadas con el sobre institucional `RespuestaApi` (`isSuccess`).
 
-2. **Límite de Tasa Aislado (Throttling)**:
-   > [!TIP]
-   > En lugar de tocar el archivo `proyecto/settings.py` que está prohibido, el throttling se encapsuló en `app/throttling.py` mediante la clase `FeedbackRateThrottle`, heredando de `UserRateThrottle`. Se fijó una cuota dura de `2/hour`.
+## Método
 
-3. **Autenticación Implícita**:
-   No se sobreescribió `permission_classes` en la vista, apoyándonos en el `IsAuthenticated` global, lo cual asegura que solo los estudiantes/docentes verificados puedan enviar feedback.
+1. **Definición del Contrato (OpenAPI 3.0)**:
+   Se definió `openapi/feedback.yaml` especificando la operación `post`, los esquemas de datos `FeedbackMovilCreate` y `RespuestaExito`, con los códigos de error `400` (validación), `401` (no autenticado) y `429` (throttling excedido).
 
-4. **Transaccionalidad y Sobre de Respuesta**:
-   El guardado se protegió dentro de `transaction.atomic()` y las salidas (201 Created y 400 Bad Request) se forzaron a cruzar por la clase `RespuestaApi`, devolviendo el estricto formato `{"isSuccess": true|false, "message": "...", "data": ...}`.
+2. **Modelo y Migración**:
+   Se creó el modelo `FeedbackMovil` en `app/models.py` heredando de `ModeloBase` (`sige_ports`), con relación `ForeignKey` hacia el usuario (permitiendo múltiples feedbacks por usuario), campo `tipo` con opciones controladas y `mensaje` libre. Se generó y aplicó la migración `0004_feedbackmovil.py`.
 
-## Validación y TDD
+3. **Serializador**:
+   En `app/serializers.py` se implementó `FeedbackMovilSerializer` usando `ModelSerializer` con los campos `tipo` y `mensaje`, delegando toda la validación al modelo (choices y campo requerido).
 
-Se escribieron **4 pruebas clave** que aseguran la fiabilidad del endpoint a lo largo del tiempo:
+4. **Throttling Aislado**:
+   En `app/throttling.py` se añadió la clase `FeedbackRateThrottle`, heredando de `UserRateThrottle` con un límite duro de `2/hour` por usuario. La tasa se define en el código de la app, **sin modificar** la zona prohibida de `proyecto/settings.py`.
 
-| Prueba | Propósito | Resultado |
-|---|---|---|
-| `test_post_feedback_exitoso` | Verifica el camino feliz. El feedback se inserta y se asocia al usuario autenticado. | ✅ Pasó |
-| `test_post_feedback_sin_autenticar` | Garantiza que se bloqueen peticiones anónimas (401). | ✅ Pasó |
-| `test_post_datos_invalidos` | Verifica que el sobre de error (`isSuccess: false` + `errors`) se despache ante tipos inválidos o campos faltantes (400). | ✅ Pasó |
-| `test_throttling_estricto` | Verifica que una tercera petición seguida del mismo usuario sea rechazada por DRF con un `429 Too Many Requests`. | ✅ Pasó |
+5. **Vista y Transaccionalidad**:
+   En `app/views.py` se implementó `FeedbackView(APIView)`:
+   - Usa el `IsAuthenticated` global (sin sobreescribir `permission_classes`).
+   - Aplica `FeedbackRateThrottle` para bloquear abusos.
+   - El guardado se protege dentro de `transaction.atomic()`.
+   - Toda salida (201, 400, 500) pasa por `RespuestaApi` garantizando el sobre `isSuccess`.
 
-## Cómo probar manualmente
-Levanta el servidor:
+6. **Pruebas Automatizadas (TDD)**:
+   Se implementaron 4 pruebas en `app/tests/test_feedback.py` cubriendo:
+   - Camino feliz: el feedback se crea y se asocia correctamente al usuario.
+   - Rechazo de peticiones anónimas (`401 Unauthorized`).
+   - Datos inválidos: tipo fuera de opciones y mensaje ausente (`400 Bad Request` con estructura `errors`).
+   - Throttling estricto: a la tercera petición el servidor devuelve `429 Too Many Requests`.
+
+## Resultado
+
+| Componente | Configuración | Estado | Veredicto |
+|---|---|---|---|
+| Contrato | `openapi/feedback.yaml` | Creado | ✅ Válido |
+| Modelo | `FeedbackMovil` | Migración `0004` aplicada | ✅ Válido |
+| Serializador | `FeedbackMovilSerializer` | Validación de tipo y mensaje | ✅ Válido |
+| Throttling | `FeedbackRateThrottle` | Activo (2/hora por usuario) | ✅ Válido |
+| Vista | `FeedbackView` | POST con atomic y sobre estándar | ✅ Válido |
+| Pruebas (TDD) | 4 pruebas unitarias dedicadas | 100% pasando (23/23 suite completa) | ✅ Válido |
+
+## Verificación
+
 ```bash
-python manage.py runserver
+# 1. Ejecutar pruebas unitarias de T9
+python manage.py test app.tests.test_feedback
+
+# 2. Ejecutar suite completa
+python manage.py test
 ```
-Y envía un payload con tu token JWT:
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1.0.0/movil/feedback/ \
-  -H "Authorization: Bearer <TU_TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '{"tipo": "SUGERENCIA", "mensaje": "Por favor agreguen modo oscuro."}'
+
+### Ejemplo de Petición y Respuesta
+
+**POST `/api/v1.0.0/movil/feedback/`**
+```json
+// Headers:
+// Authorization: Bearer <token>
+// Content-Type: application/json
+
+{
+    "tipo": "SUGERENCIA",
+    "mensaje": "Por favor agreguen modo oscuro a la aplicación."
+}
+```
+
+**Respuesta (HTTP 201 Created):**
+```json
+{
+    "isSuccess": true,
+    "message": "Feedback enviado con éxito.",
+    "data": {
+        "tipo": "SUGERENCIA",
+        "mensaje": "Por favor agreguen modo oscuro a la aplicación."
+    }
+}
+```
+
+**Respuesta throttling excedido (HTTP 429):**
+```json
+{
+    "detail": "Request was throttled. Expected available in 3600 seconds."
+}
 ```
