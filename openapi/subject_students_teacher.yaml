@@ -1,0 +1,151 @@
+openapi: 3.0.3
+info:
+  title: SIGE-UBE — Estudiantes por Asignatura (Docente)
+  version: 1.0.0
+  description: |
+    Endpoint de gestión académica docente para consultar la lista completa de estudiantes matriculados en una asignatura.
+
+    **El sobre de respuesta es siempre el mismo:**
+    `{"isSuccess": true, "message": null, "data": {}}`
+
+servers:
+  - url: https://sige.innotech-solutions.com.ec/api/v1.0.0
+    description: Staging (datos sintéticos)
+  - url: http://localhost:8000/api/v1.0.0
+    description: Servidor Local
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    XPeriodIDHeader:
+      name: X-Period-ID
+      in: header
+      required: true
+      description: ID del periodo lectivo (tabla `periodo`).
+      schema:
+        type: integer
+        example: 6
+
+    MateriaIDPath:
+      name: materia_id
+      in: path
+      required: true
+      description: ID de la Materia.
+      schema:
+        type: integer
+        example: 456
+
+  schemas:
+    Sobre:
+      type: object
+      required: [isSuccess, message]
+      properties:
+        isSuccess: { type: boolean, example: true }
+        message: { type: string, nullable: true, example: null }
+
+    MateriaInfoDocente:
+      type: object
+      required: [id, name, level, parallel]
+      properties:
+        id: { type: integer, example: 456 }
+        name: { type: string, example: "Matemáticas" }
+        level: { type: string, example: "OCTAVO AÑO EGB" }
+        parallel: { type: string, example: "A" }
+
+    EstadoMatriculaDocente:
+      type: object
+      required: [label, status]
+      properties:
+        label: { type: string, example: "badge-success" }
+        status: { type: string, example: "Activo" }
+
+    EstudianteRosterItem:
+      type: object
+      required: [id, student_id, persona_id, photo_url, full_name, emails, phone, enrollment_status, attendance_percentage, final_grade]
+      properties:
+        id: { type: integer, example: 12345, description: "ID de MateriaAsignada" }
+        student_id: { type: integer, example: 100 }
+        persona_id: { type: integer, example: 5001, description: "ID de la persona" }
+        photo_url: { type: string, example: "http://localhost:8000/media/imagen_perfil/2024/01/foto.jpg" }
+        full_name: { type: string, example: "García López Juan Carlos" }
+        emails:
+          type: array
+          items: { type: string }
+          example: ["juan.garcia@institucion.edu.ec", "juan@correo.com"]
+        phone: { type: string, nullable: true, example: "0999654321" }
+        enrollment_status: { $ref: '#/components/schemas/EstadoMatriculaDocente' }
+        attendance_percentage: { type: number, format: float, example: 95.5 }
+        final_grade: { type: number, format: float, nullable: true, example: 9.25 }
+
+    SubjectStudentsData:
+      type: object
+      required: [subject, total_students, students]
+      properties:
+        subject: { $ref: '#/components/schemas/MateriaInfoDocente' }
+        total_students: { type: integer, example: 25 }
+        students:
+          type: array
+          items: { $ref: '#/components/schemas/EstudianteRosterItem' }
+
+    RespuestaSubjectStudents:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          required: [data]
+          properties:
+            data: { $ref: '#/components/schemas/SubjectStudentsData' }
+
+    RespuestaError:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          properties:
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items: { type: string }
+
+paths:
+  /teacher/subjects/{materia_id}/students/:
+    get:
+      summary: Lista de estudiantes de una materia (Roster docente)
+      description: |
+        Retorna la nómina de estudiantes matriculados en una asignatura asignada al docente autenticado, con datos de contacto, asistencia y nota final.
+      operationId: obtenerEstudiantesMateriaDocente
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MateriaIDPath'
+        - $ref: '#/components/parameters/XPeriodIDHeader'
+      responses:
+        '200':
+          description: Nómina de estudiantes obtenida exitosamente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaSubjectStudents' }
+        '400':
+          description: Header X-Period-ID faltante o no numérico
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '401':
+          description: No autenticado o token expirado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '403':
+          description: Sin perfil docente o sin asignación a la materia
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '500':
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }

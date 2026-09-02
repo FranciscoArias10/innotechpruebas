@@ -1,0 +1,135 @@
+openapi: 3.0.3
+info:
+  title: SIGE-UBE — Compañeros de Clase de Asignatura
+  version: 1.0.0
+  description: |
+    Endpoint para obtener la lista de compañeros matriculados en la misma asignatura (con minimización de datos para privacidad).
+
+    **El sobre de respuesta es siempre el mismo:**
+    `{"isSuccess": true, "message": null, "data": {}}`
+
+servers:
+  - url: https://sige.innotech-solutions.com.ec/api/v1.0.0
+    description: Staging (datos sintéticos)
+  - url: http://localhost:8000/api/v1.0.0
+    description: Servidor Local
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    XPeriodIDHeader:
+      name: X-Period-ID
+      in: header
+      required: true
+      description: ID del periodo lectivo (tabla `periodo`).
+      schema:
+        type: integer
+        example: 6
+
+    MateriaAsignadaIDPath:
+      name: materia_asignada_id
+      in: path
+      required: true
+      description: ID de la MateriaAsignada del estudiante.
+      schema:
+        type: integer
+        example: 12345
+
+  schemas:
+    Sobre:
+      type: object
+      required: [isSuccess, message]
+      properties:
+        isSuccess: { type: boolean, example: true }
+        message: { type: string, nullable: true, example: null }
+
+    SubjectHeader:
+      type: object
+      required: [id, name, level, parallel]
+      properties:
+        id: { type: integer, example: 456 }
+        name: { type: string, example: "Matemáticas" }
+        level: { type: string, example: "OCTAVO AÑO EGB" }
+        parallel: { type: string, example: "A" }
+
+    CompaneroItem:
+      type: object
+      required: [id, persona_id, photo_url, full_name]
+      properties:
+        id: { type: integer, example: 12346, description: "ID de MateriaAsignada del compañero" }
+        persona_id: { type: integer, example: 5001, description: "ID de la persona para iniciar chats" }
+        photo_url: { type: string, example: "http://localhost:8000/media/imagen_perfil/2024/01/foto.jpg" }
+        full_name: { type: string, example: "García López Juan Carlos" }
+
+    SubjectClassmatesData:
+      type: object
+      required: [subject, total_students, classmates]
+      properties:
+        subject: { $ref: '#/components/schemas/SubjectHeader' }
+        total_students: { type: integer, example: 25 }
+        classmates:
+          type: array
+          items: { $ref: '#/components/schemas/CompaneroItem' }
+
+    RespuestaSubjectClassmates:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          required: [data]
+          properties:
+            data: { $ref: '#/components/schemas/SubjectClassmatesData' }
+
+    RespuestaError:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          properties:
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items: { type: string }
+
+paths:
+  /student/subjects/{materia_asignada_id}/classmates/:
+    get:
+      summary: Lista de compañeros de clase por asignatura
+      description: |
+        Retorna la lista de estudiantes inscritos en la misma asignatura (excluyendo datos sensibles por privacidad).
+      operationId: obtenerCompanerosMateria
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MateriaAsignadaIDPath'
+        - $ref: '#/components/parameters/XPeriodIDHeader'
+      responses:
+        '200':
+          description: Lista de compañeros obtenida exitosamente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaSubjectClassmates' }
+        '400':
+          description: Header X-Period-ID no numérico o faltante
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '401':
+          description: No autenticado o token expirado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '403':
+          description: Sin perfil o la materia no pertenece al estudiante (IDOR Prevention)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '500':
+          description: Error interno al obtener lista de compañeros
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }

@@ -1,0 +1,45 @@
+# OpenAPI Contract Tests CI Workflow
+name: OpenApi Contract Tests
+
+on:
+  push:
+    branches: [ main, "T**" ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  contract-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml schemathesis
+          sudo npm install -g @stoplight/prism-cli
+
+      - name: Validate and Bundle OpenAPI Syntax
+        run: |
+          python scripts/bundle_openapi.py
+          python -c "import yaml; yaml.safe_load(open('openapi/openapi.yaml'))"
+
+      - name: Start Prism Mock Server
+        run: |
+          prism mock openapi/openapi.yaml -p 4010 -h 127.0.0.1 &
+          sleep 10
+
+      - name: Run Schemathesis Contract Validation
+        run: |
+          schemathesis run openapi/openapi.yaml --url http://127.0.0.1:4010 -c not_a_server_error -m positive

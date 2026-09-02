@@ -1,0 +1,71 @@
+openapi: 3.0.3
+info:
+  title: SIGE-UBE — Configuración Pública de ChatIA
+  version: 1.0.0
+  description: |
+    Endpoint público para obtener el nombre del asistente IA y versión de plataforma sin requerir autenticación.
+
+    **El sobre de respuesta es siempre el mismo:**
+    `{"isSuccess": true, "message": "texto", "data": {}}`
+
+servers:
+  - url: https://sige.innotech-solutions.com.ec/api/v1.0.0
+    description: Staging (datos sintéticos)
+  - url: http://localhost:8000/api/v1.0.0
+    description: Servidor Local
+
+components:
+  schemas:
+    Sobre:
+      type: object
+      required: [isSuccess, message]
+      properties:
+        isSuccess: { type: boolean, example: true }
+        message: { type: string, nullable: true, example: "Configuración obtenida" }
+
+    ChatIAPublicConfigData:
+      type: object
+      required: [assistant_name, platform_name, platform_version]
+      properties:
+        assistant_name: { type: string, example: "Amani", description: "Nombre del asistente IA" }
+        platform_name: { type: string, example: "SIGE", description: "Nombre corto del sistema" }
+        platform_version: { type: string, example: "0.1.1", description: "Versión de la plataforma" }
+
+    RespuestaChatIAPublicConfig:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          required: [data]
+          properties:
+            data: { $ref: '#/components/schemas/ChatIAPublicConfigData' }
+
+    RespuestaError:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          properties:
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items: { type: string }
+
+paths:
+  /chat-ia/config/:
+    get:
+      summary: Configuración pública de ChatIA
+      description: |
+        Retorna la identidad pública del asistente IA (ej: Amani) para ser mostrada en la interfaz del cliente. No requiere token.
+      operationId: obtenerConfigPublicaChatIA
+      security: []
+      responses:
+        '200':
+          description: Configuración pública obtenida exitosamente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaChatIAPublicConfig' }
+        '500':
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }

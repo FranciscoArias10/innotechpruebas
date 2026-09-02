@@ -1,0 +1,12 @@
+# Python 3.11 -- es la version del sistema real. Con otra, las dependencias
+# pueden instalar versiones distintas y el codigo se comporta diferente al
+# integrarse.
+#
+# Mismas versiones que el sistema real: no las cambien sin avisar.
+Django==4.2.23
+djangorestframework==3.16.1
+djangorestframework_simplejwt==5.5.1
+
+# Pruebas de contrato. Fijen la version exacta la primera vez que instalen
+# (pip freeze | grep schemathesis) y anotenla aqui.
+schemathesis

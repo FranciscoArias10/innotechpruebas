@@ -1,0 +1,2876 @@
+openapi: 3.0.3
+info:
+  title: SIGE-UBE — API móvil
+  version: 1.0.0
+  description: Especificación completa de la API Móvil SIGE-UBE (12 módulos).
+servers:
+- url: https://sige.innotech-solutions.com.ec/api/v1.0.0
+  description: Staging (datos sintéticos)
+- url: http://localhost:8000/api/v1.0.0
+  description: Servidor Local
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Sobre:
+      type: object
+      required:
+      - isSuccess
+      - message
+      properties:
+        isSuccess:
+          type: boolean
+          example: true
+        message:
+          type: string
+          nullable: true
+          example: Operación realizada con éxito
+    UsuarioInfo:
+      type: object
+      required:
+      - id
+      - username
+      - email
+      - first_name
+      - last_name
+      - is_staff
+      - is_superuser
+      - is_active
+      - date_joined
+      properties:
+        id:
+          type: integer
+          example: 123
+        username:
+          type: string
+          example: jperez
+        email:
+          type: string
+          example: jperez@example.com
+        first_name:
+          type: string
+          example: Juan
+        last_name:
+          type: string
+          example: Pérez
+        is_staff:
+          type: boolean
+          example: false
+        is_superuser:
+          type: boolean
+          example: false
+        is_active:
+          type: boolean
+          example: true
+        date_joined:
+          type: string
+          format: date-time
+          example: '2024-01-15T10:30:00Z'
+    PeriodoInfo:
+      type: object
+      required:
+      - id
+      - name
+      - is_active
+      properties:
+        id:
+          type: integer
+          example: 5
+        name:
+          type: string
+          example: 2024-2025
+        is_active:
+          type: boolean
+          example: true
+    SignInData:
+      type: object
+      required:
+      - access
+      - refresh
+      - user
+      - profiles
+      - password_change_required
+      - periods
+      - active_period_id
+      properties:
+        access:
+          type: string
+          example: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+        refresh:
+          type: string
+          example: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+        user:
+          $ref: '#/components/schemas/UsuarioInfo'
+        profiles:
+          type: array
+          items:
+            type: string
+            enum:
+            - student
+            - teacher
+            - representative
+            - admin
+          example:
+          - student
+          - representative
+        password_change_required:
+          type: boolean
+          example: false
+        periods:
+          type: array
+          items:
+            $ref: '#/components/schemas/PeriodoInfo'
+        active_period_id:
+          type: integer
+          example: 5
+    RefreshData:
+      type: object
+      required:
+      - access
+      - refresh
+      properties:
+        access:
+          type: string
+          example: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+        refresh:
+          type: string
+          example: eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...
+    RecoverPasswordData:
+      type: object
+      required:
+      - emails
+      properties:
+        emails:
+          type: string
+          example: jperez@gmail.com, jperez@institution.edu.ec
+    RecoverUsernameData:
+      type: object
+      required:
+      - username
+      - full_name
+      properties:
+        username:
+          type: string
+          example: jperez
+        full_name:
+          type: string
+          example: Juan Carlos Pérez López
+    RespuestaSignIn:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            $ref: '#/components/schemas/SignInData'
+    RespuestaRefresh:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            $ref: '#/components/schemas/RefreshData'
+    RespuestaSignOut:
+      $ref: '#/components/schemas/Sobre'
+    RespuestaRecoverPassword:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        properties:
+          data:
+            $ref: '#/components/schemas/RecoverPasswordData'
+    RespuestaRecoverUsername:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            $ref: '#/components/schemas/RecoverUsernameData'
+    RespuestaChangePassword:
+      $ref: '#/components/schemas/Sobre'
+    RespuestaError:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        properties:
+          errors:
+            type: object
+            additionalProperties:
+              type: array
+              items:
+                type: string
+    RedesSociales:
+      type: object
+      properties:
+        facebook:
+          type: string
+          nullable: true
+          example: https://www.facebook.com/miinstitucion
+        instagram:
+          type: string
+          nullable: true
+          example: https://www.instagram.com/miinstitucion
+        twitter:
+          type: string
+          nullable: true
+          example: null
+        youtube:
+          type: string
+          nullable: true
+          example: null
+    BrandingData:
+      type: object
+      required:
+      - name
+      - name_key
+      - slogan
+      - base_path
+      - email_domain
+      - phone
+      - address
+      - website_url
+      - logo_sign_in
+      - logo_sm_sign_in
+      - logo_admin
+      - logo_sm_admin
+      - favicon
+      - logo_email_banner
+      - logo_email_footer
+      - color_primary
+      - color_secondary
+      - social
+      - platform_version
+      properties:
+        name:
+          type: string
+          example: Sistema Integrado de Gestión Educativa
+        name_key:
+          type: string
+          example: SIGE
+        slogan:
+          type: string
+          example: Educación de calidad para todos
+        base_path:
+          type: string
+          example: https://sige.example.edu.ec/
+        email_domain:
+          type: string
+          example: example.edu.ec
+        phone:
+          type: string
+          example: 0999123456
+        address:
+          type: string
+          example: 'Av. Principal #123, Guayaquil, Ecuador'
+        website_url:
+          type: string
+          example: https://example.edu.ec
+        logo_sign_in:
+          type: string
+          example: /media/repositorio/pdf/2024/01/logo-sign-in.png
+        logo_sm_sign_in:
+          type: string
+          example: /media/repositorio/pdf/2024/01/logo-sm-sign-in.png
+        logo_admin:
+          type: string
+          example: /media/repositorio/pdf/2024/01/logo-admin.png
+        logo_sm_admin:
+          type: string
+          example: /media/repositorio/pdf/2024/01/logo-admin-sm.png
+        favicon:
+          type: string
+          example: /static/v-1.0.0/img/favicon.png
+        logo_email_banner:
+          type: string
+          example: /static/v-1.0.0/img/logo-email-banner.png
+        logo_email_footer:
+          type: string
+          example: /static/v-1.0.0/img/logo-email-footer.png
+        color_primary:
+          type: string
+          example: '#04205b'
+        color_secondary:
+          type: string
+          example: '#ffaa46'
+        social:
+          $ref: '#/components/schemas/RedesSociales'
+        platform_version:
+          type: string
+          example: 0.1.5
+    RespuestaBranding:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            $ref: '#/components/schemas/BrandingData'
+    ActividadTipo:
+      type: object
+      required:
+      - id
+      - name
+      - icon_url
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Tarea
+        icon_url:
+          type: string
+          nullable: true
+          example: /media/icono/2024/01/tarea.svg
+    GradingInfo:
+      type: object
+      properties:
+        cohort:
+          type: string
+          nullable: true
+          example: PRIMER QUIMESTRE
+        grading_book:
+          type: string
+          nullable: true
+          example: TAREAS
+        category:
+          type: string
+          nullable: true
+          example: Trabajo individual
+    SubjectSummaryItem:
+      type: object
+      required:
+      - id
+      - name
+      - parallel
+      properties:
+        id:
+          type: integer
+          example: 45
+        name:
+          type: string
+          example: MATEMÁTICAS
+        parallel:
+          type: string
+          example: A
+    StatusActividadCalendar:
+      type: object
+      required:
+      - code
+      - label
+      - badge
+      properties:
+        code:
+          type: string
+          enum:
+          - pending
+          - submitted
+          - completed
+          - overdue
+          example: pending
+        label:
+          type: string
+          example: Pendiente
+        badge:
+          type: string
+          enum:
+          - warning
+          - info
+          - success
+          - danger
+          example: warning
+    SubmissionInfo:
+      type: object
+      required:
+      - required
+      - submitted
+      - deadline_passed
+      properties:
+        required:
+          type: boolean
+          example: true
+        submitted:
+          type: boolean
+          example: false
+        deadline_passed:
+          type: boolean
+          example: false
+    ActividadCalendarItem:
+      type: object
+      required:
+      - id
+      - title
+      - description
+      - start
+      - end
+      - color
+      - type
+      - grading_type
+      - delivery_type
+      - requires_submission
+      - grading_info
+      - subject
+      - status
+      - submission
+      - attachments
+      - links
+      - time_remaining
+      - week_number
+      - can_submit
+      properties:
+        id:
+          type: integer
+          example: 123
+        title:
+          type: string
+          example: 'Tarea: Ejercicios de Matemáticas'
+        description:
+          type: string
+          example: Resolver ejercicios del capítulo 5...
+        start:
+          type: string
+          format: date-time
+          example: '2025-12-10T08:00:00-05:00'
+        end:
+          type: string
+          format: date-time
+          example: '2025-12-15T23:59:00-05:00'
+        color:
+          type: string
+          example: '#E57373'
+        type:
+          $ref: '#/components/schemas/ActividadTipo'
+        grading_type:
+          type: string
+          nullable: true
+          example: Cuantitativa
+        delivery_type:
+          type: string
+          nullable: true
+          example: Permitir envío
+        requires_submission:
+          type: boolean
+          example: true
+        grading_info:
+          $ref: '#/components/schemas/GradingInfo'
+          nullable: true
+        subject:
+          $ref: '#/components/schemas/SubjectSummaryItem'
+        status:
+          $ref: '#/components/schemas/StatusActividadCalendar'
+        submission:
+          $ref: '#/components/schemas/SubmissionInfo'
+        attachments:
+          type: object
+          properties:
+            has_attachments:
+              type: boolean
+              example: true
+            count:
+              type: integer
+              example: 1
+        links:
+          type: object
+          properties:
+            has_links:
+              type: boolean
+              example: false
+        time_remaining:
+          type: string
+          nullable: true
+          example: 5 días, 3 horas
+        week_number:
+          type: integer
+          example: 12
+        can_submit:
+          type: boolean
+          example: true
+    CalendarSummary:
+      type: object
+      required:
+      - total
+      - pending
+      - completed
+      - overdue
+      properties:
+        total:
+          type: integer
+          example: 15
+        pending:
+          type: integer
+          example: 5
+        completed:
+          type: integer
+          example: 8
+        overdue:
+          type: integer
+          example: 2
+    CalendarData:
+      type: object
+      required:
+      - view
+      - period
+      - range
+      - summary
+      - activities
+      properties:
+        view:
+          type: string
+          enum:
+          - agenda
+          - month
+          - week
+          example: agenda
+        period:
+          type: object
+          properties:
+            id:
+              type: integer
+              example: 6
+            name:
+              type: string
+              example: PERIODO LECTIVO 2024 - 2025
+        range:
+          type: object
+          properties:
+            start:
+              type: string
+              format: date-time
+            end:
+              type: string
+              format: date-time
+        summary:
+          $ref: '#/components/schemas/CalendarSummary'
+        activities:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActividadCalendarItem'
+    RespuestaCalendar:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            $ref: '#/components/schemas/CalendarData'
+    RespuestaActivityDetail:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            $ref: '#/components/schemas/ActividadCalendarItem'
+    ChatIAPublicConfigData:
+      type: object
+      required:
+      - assistant_name
+      - platform_name
+      - platform_version
+      properties:
+        assistant_name:
+          type: string
+          example: Amani
+          description: Nombre del asistente IA
+        platform_name:
+          type: string
+          example: SIGE
+          description: Nombre corto del sistema
+        platform_version:
+          type: string
+          example: 0.1.1
+          description: Versión de la plataforma
+    RespuestaChatIAPublicConfig:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            $ref: '#/components/schemas/ChatIAPublicConfigData'
+    SesionChatIA:
+      type: object
+      required:
+      - id
+      - title
+      - status
+      - created_at
+      - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: a3b8e90c-1234-5678-90ab-cdef12345678
+        title:
+          type: string
+          example: Consulta sobre horario
+        status:
+          type: string
+          enum:
+          - active
+          - deleted
+          example: active
+        created_at:
+          type: string
+          format: date-time
+          example: '2025-12-31T10:00:00Z'
+        updated_at:
+          type: string
+          format: date-time
+          example: '2025-12-31T10:30:00Z'
+    SesionEliminadaData:
+      type: object
+      required:
+      - id
+      - status
+      - deleted_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: a3b8e90c-1234-5678-90ab-cdef12345678
+        status:
+          type: string
+          example: deleted
+        deleted_at:
+          type: string
+          format: date-time
+          example: '2025-12-31T16:30:00Z'
+    RespuestaListarSesiones:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            type: array
+            items:
+              $ref: '#/components/schemas/SesionChatIA'
+    RespuestaRenombrarSesion:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            $ref: '#/components/schemas/SesionChatIA'
+    RespuestaEliminarSesion:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            $ref: '#/components/schemas/SesionEliminadaData'
+    RecursoTipo:
+      type: object
+      required:
+      - code
+      - name
+      - icon_url
+      properties:
+        code:
+          type: string
+          enum:
+          - video
+          - link
+          - pdf
+          - doc
+          - excel
+          - ppt
+          - image
+          - file
+          - folder
+          example: video
+        name:
+          type: string
+          example: Video
+        icon_url:
+          type: string
+          nullable: true
+          example: /media/icono/video.svg
+    RecursoLink:
+      type: object
+      required:
+      - id
+      - name
+      - url
+      - type
+      - type_icon
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: OBSERVE EL VIDEO NOCIONES DEL TIEMPO
+        url:
+          type: string
+          nullable: true
+          example: https://youtube.com/...
+        type:
+          $ref: '#/components/schemas/RecursoTipo'
+        type_icon:
+          type: string
+          nullable: true
+          example: /media/icono/link.svg
+    RecursoArchivo:
+      type: object
+      required:
+      - id
+      - name
+      - download_url
+      - type
+      - type_icon
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: MATERIAL DE APOYO.pdf
+        download_url:
+          type: string
+          nullable: true
+          example: /download/...
+        type:
+          $ref: '#/components/schemas/RecursoTipo'
+        type_icon:
+          type: string
+          nullable: true
+          example: /media/icono/pdf.svg
+    RecursoCarpeta:
+      type: object
+      required:
+      - id
+      - name
+      - type
+      - type_icon
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Material complementario
+        type:
+          $ref: '#/components/schemas/RecursoTipo'
+        type_icon:
+          type: string
+          nullable: true
+          example: /media/icono/folder.svg
+    RecursosContenedor:
+      type: object
+      required:
+      - links
+      - files
+      - folders
+      properties:
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecursoLink'
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecursoArchivo'
+        folders:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecursoCarpeta'
+    SubtemaInfo:
+      type: object
+      required:
+      - id
+      - name
+      - content
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: MEDIDAS DE TIEMPO
+        content:
+          type: string
+          example: <html>...
+    TemaInfo:
+      type: object
+      required:
+      - id
+      - name
+      - content
+      - subtopics
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: SOY EL SEÑOR METRO
+        content:
+          type: string
+          example: <html>...
+        subtopics:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubtemaInfo'
+    UnidadInfo:
+      type: object
+      required:
+      - id
+      - name
+      - objective
+      - topics
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: 'UNIDAD # 5'
+        objective:
+          type: string
+          example: Comprender los conceptos de medición...
+        topics:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemaInfo'
+    PlanificacionContenido:
+      type: object
+      required:
+      - units
+      - bibliographies
+      - methodological_strategies
+      - resources
+      properties:
+        units:
+          type: array
+          items:
+            $ref: '#/components/schemas/UnidadInfo'
+        bibliographies:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+                example: 1
+              name:
+                type: string
+                example: Libro de Matemáticas 8vo
+        methodological_strategies:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+                example: 1
+              name:
+                type: string
+                example: Trabajo en grupo
+        resources:
+          $ref: '#/components/schemas/RecursosContenedor'
+    ActividadEstado:
+      type: object
+      required:
+      - code
+      - label
+      properties:
+        code:
+          type: string
+          enum:
+          - pending
+          - submitted
+          - overdue
+          example: pending
+        label:
+          type: string
+          example: Pendiente
+    ActividadPlanificada:
+      type: object
+      required:
+      - id
+      - name
+      - type
+      - start_date
+      - end_date
+      - status
+      - has_attachment
+      - attachment_url
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: ACTIVIDAD EN CLASE EXPUESTA EN UNA HOJA DE TRABAJO
+        type:
+          type: object
+          properties:
+            id:
+              type: integer
+              example: 1
+            name:
+              type: string
+              example: Actividad
+            icon_url:
+              type: string
+              nullable: true
+              example: /media/icono/actividad.svg
+        start_date:
+          type: string
+          format: date-time
+          example: '2025-11-18T07:00:00-05:00'
+        end_date:
+          type: string
+          format: date-time
+          example: '2025-11-18T12:00:00-05:00'
+        status:
+          $ref: '#/components/schemas/ActividadEstado'
+        has_attachment:
+          type: boolean
+          example: true
+        attachment_url:
+          type: string
+          nullable: true
+          example: /download/...
+    ActividadesPaginadas:
+      type: object
+      required:
+      - items
+      - total
+      - pending_count
+      - limit
+      - offset
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActividadPlanificada'
+        total:
+          type: integer
+          example: 3
+        pending_count:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 50
+        offset:
+          type: integer
+          example: 0
+    NavegacionSemana:
+      type: object
+      required:
+      - total_weeks
+      - current_week
+      - previous_week
+      - next_week
+      properties:
+        total_weeks:
+          type: integer
+          example: 43
+        current_week:
+          type: integer
+          nullable: true
+          example: 3
+        previous_week:
+          type: integer
+          nullable: true
+          example: 2
+        next_week:
+          type: integer
+          nullable: true
+          example: 4
+    SemanaDetalle:
+      type: object
+      required:
+      - order
+      - name
+      - start_date
+      - end_date
+      - has_previous
+      - has_next
+      - pending_activities
+      properties:
+        order:
+          type: integer
+          example: 3
+        name:
+          type: string
+          example: SEMANA 3 TT
+        start_date:
+          type: string
+          format: date
+          nullable: true
+          example: '2025-11-17'
+        end_date:
+          type: string
+          format: date
+          nullable: true
+          example: '2025-11-23'
+        has_previous:
+          type: boolean
+          example: true
+        has_next:
+          type: boolean
+          example: true
+        pending_activities:
+          type: integer
+          example: 1
+    MateriaHeader:
+      type: object
+      required:
+      - id
+      - name
+      - level
+      - parallel
+      - start_date
+      - end_date
+      - total_weeks
+      - pending_activities
+      properties:
+        id:
+          type: integer
+          example: 12345
+        name:
+          type: string
+          example: MATEMÁTICAS
+        level:
+          type: string
+          example: 8vo EGB
+        parallel:
+          type: string
+          example: A
+        start_date:
+          type: string
+          format: date
+          nullable: true
+          example: '2025-04-16'
+        end_date:
+          type: string
+          format: date
+          nullable: true
+          example: '2026-02-28'
+        total_weeks:
+          type: integer
+          example: 43
+        pending_activities:
+          type: integer
+          example: 5
+    ClassPlanningData:
+      type: object
+      required:
+      - subject
+      - week
+      - content
+      - activities
+      - navigation
+      properties:
+        subject:
+          $ref: '#/components/schemas/MateriaHeader'
+        week:
+          $ref: '#/components/schemas/SemanaDetalle'
+          nullable: true
+        content:
+          $ref: '#/components/schemas/PlanificacionContenido'
+          nullable: true
+        activities:
+          $ref: '#/components/schemas/ActividadesPaginadas'
+        navigation:
+          $ref: '#/components/schemas/NavegacionSemana'
+    RespuestaClassPlanning:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            $ref: '#/components/schemas/ClassPlanningData'
+    Dispositivo:
+      type: object
+      required:
+      - id
+      - plataforma
+      - app_version
+      - modelo_dispositivo
+      - activo
+      properties:
+        id:
+          type: integer
+          example: 12
+        plataforma:
+          type: string
+          enum:
+          - Android
+          - iOS
+        app_version:
+          type: string
+          example: 1.0.0
+        modelo_dispositivo:
+          type: string
+          example: Pixel 7
+        activo:
+          type: boolean
+    RespuestaDispositivo:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            $ref: '#/components/schemas/Dispositivo'
+    EstudianteBase:
+      type: object
+      required:
+      - id
+      - full_name
+      properties:
+        id:
+          type: integer
+          example: 123
+        full_name:
+          type: string
+          example: Juan Pérez
+    PeriodoBase:
+      type: object
+      required:
+      - id
+      - name
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: 2025-2026
+    AsistenciaMetrica:
+      type: object
+      required:
+      - attended
+      - justified
+      - pending
+      - absent
+      - total
+      - percentage
+      properties:
+        attended:
+          type: integer
+          example: 45
+        justified:
+          type: integer
+          example: 3
+        pending:
+          type: integer
+          example: 0
+        absent:
+          type: integer
+          example: 2
+        total:
+          type: integer
+          example: 50
+        percentage:
+          type: number
+          format: float
+          example: 96.0
+    MateriaAsistenciaItem:
+      type: object
+      required:
+      - materia_asignada_id
+      - subject_id
+      - cronograma_id
+      - name
+      - by_hours
+      - by_days
+      - status
+      properties:
+        materia_asignada_id:
+          type: integer
+          example: 456
+        subject_id:
+          type: integer
+          example: 789
+        cronograma_id:
+          type: integer
+          nullable: true
+          example: 10
+        name:
+          type: string
+          example: LENGUA Y LITERATURA
+        by_hours:
+          $ref: '#/components/schemas/AsistenciaMetrica'
+        by_days:
+          $ref: '#/components/schemas/AsistenciaMetrica'
+        status:
+          type: string
+          enum:
+          - sin_datos
+          - excelente
+          - buena
+          - regular
+          - baja
+          example: excelente
+    StudentAttendanceData:
+      type: object
+      required:
+      - student
+      - period
+      - subjects
+      properties:
+        student:
+          $ref: '#/components/schemas/EstudianteBase'
+        period:
+          $ref: '#/components/schemas/PeriodoBase'
+        subjects:
+          type: array
+          items:
+            $ref: '#/components/schemas/MateriaAsistenciaItem'
+    RespuestaStudentAttendance:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            $ref: '#/components/schemas/StudentAttendanceData'
+    ProfesorInfo:
+      type: object
+      required:
+      - id
+      - full_name
+      - avatar_url
+      properties:
+        id:
+          type: integer
+          example: 123
+        full_name:
+          type: string
+          example: JUAN PÉREZ LÓPEZ
+        avatar_url:
+          type: string
+          nullable: true
+          example: /media/fotos/profesor_123.jpg
+    ModeloEvaluativoInfo:
+      type: object
+      required:
+      - is_quantitative
+      properties:
+        is_quantitative:
+          type: boolean
+          example: true
+    AsignaturaItem:
+      type: object
+      required:
+      - id
+      - subject_name
+      - level
+      - parallel
+      - classroom
+      - attendance_percentage
+      - is_complementary
+      - teacher
+      - grades_visible
+      - pending_activities_count
+      - final_grade
+      - final_grade_letter
+      - evaluation_model
+      properties:
+        id:
+          type: integer
+          example: 59327
+          description: ID de la MateriaAsignada
+        subject_name:
+          type: string
+          example: MATEMÁTICAS
+        level:
+          type: string
+          example: 8vo EGB
+        parallel:
+          type: string
+          example: A
+        classroom:
+          type: string
+          example: Aula 101
+        attendance_percentage:
+          type: number
+          format: float
+          example: 95.5
+        is_complementary:
+          type: boolean
+          example: false
+        teacher:
+          $ref: '#/components/schemas/ProfesorInfo'
+          nullable: true
+        grades_visible:
+          type: boolean
+          example: true
+        pending_activities_count:
+          type: integer
+          example: 2
+        final_grade:
+          type: number
+          format: float
+          nullable: true
+          example: 8.75
+        final_grade_letter:
+          type: string
+          nullable: true
+          example: null
+        evaluation_model:
+          $ref: '#/components/schemas/ModeloEvaluativoInfo'
+          nullable: true
+    StudentSubjectsData:
+      type: object
+      required:
+      - subjects
+      - period
+      - total_subjects
+      properties:
+        subjects:
+          type: array
+          items:
+            $ref: '#/components/schemas/AsignaturaItem'
+        period:
+          $ref: '#/components/schemas/PeriodoInfo'
+        total_subjects:
+          type: integer
+          example: 2
+    RespuestaStudentSubjects:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            $ref: '#/components/schemas/StudentSubjectsData'
+    MatriculaInfo:
+      type: object
+      required:
+      - id
+      - level
+      - level_alias
+      - parallel
+      properties:
+        id:
+          type: integer
+          example: 9876
+        level:
+          type: string
+          example: OCTAVO AÑO DE EDUCACIÓN GENERAL BÁSICA
+        level_alias:
+          type: string
+          example: 8vo EGB
+        parallel:
+          type: string
+          example: A
+    PeriodoDetalle:
+      type: object
+      required:
+      - id
+      - name
+      properties:
+        id:
+          type: integer
+          example: 6
+        name:
+          type: string
+          example: PERIODO LECTIVO 2024 - 2025
+    StudentSummaryData:
+      type: object
+      required:
+      - total_subjects
+      - attendance_percentage
+      - pending_activities
+      - enrollment
+      - period
+      properties:
+        total_subjects:
+          type: integer
+          example: 8
+          description: Número de materias activas (no retiradas)
+        attendance_percentage:
+          type: number
+          format: float
+          example: 95.5
+          description: Porcentaje de asistencia general (0-100)
+        pending_activities:
+          type: integer
+          example: 3
+          description: Total de actividades con entrega pendiente
+        enrollment:
+          $ref: '#/components/schemas/MatriculaInfo'
+        period:
+          $ref: '#/components/schemas/PeriodoDetalle'
+    RespuestaStudentSummary:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            $ref: '#/components/schemas/StudentSummaryData'
+    SubjectHeader:
+      type: object
+      required:
+      - id
+      - name
+      - level
+      - parallel
+      properties:
+        id:
+          type: integer
+          example: 456
+        name:
+          type: string
+          example: Matemáticas
+        level:
+          type: string
+          example: OCTAVO AÑO EGB
+        parallel:
+          type: string
+          example: A
+    CompaneroItem:
+      type: object
+      required:
+      - id
+      - persona_id
+      - photo_url
+      - full_name
+      properties:
+        id:
+          type: integer
+          example: 12346
+          description: ID de MateriaAsignada del compañero
+        persona_id:
+          type: integer
+          example: 5001
+          description: ID de la persona para iniciar chats
+        photo_url:
+          type: string
+          example: http://localhost:8000/media/imagen_perfil/2024/01/foto.jpg
+        full_name:
+          type: string
+          example: García López Juan Carlos
+    SubjectClassmatesData:
+      type: object
+      required:
+      - subject
+      - total_students
+      - classmates
+      properties:
+        subject:
+          $ref: '#/components/schemas/SubjectHeader'
+        total_students:
+          type: integer
+          example: 25
+        classmates:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompaneroItem'
+    RespuestaSubjectClassmates:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            $ref: '#/components/schemas/SubjectClassmatesData'
+    MateriaDetalle:
+      type: object
+      required:
+      - id
+      - name
+      - level
+      - parallel
+      - start_date
+      - end_date
+      - total_weeks
+      - pending_activities
+      properties:
+        id:
+          type: integer
+          example: 123
+        name:
+          type: string
+          example: Matemáticas
+        level:
+          type: string
+          example: 1ro BGU
+        parallel:
+          type: string
+          example: A
+        start_date:
+          type: string
+          format: date
+          nullable: true
+          example: '2025-09-01'
+        end_date:
+          type: string
+          format: date
+          nullable: true
+          example: '2026-06-30'
+        total_weeks:
+          type: integer
+          example: 40
+        pending_activities:
+          type: integer
+          example: 5
+    TipoActividad:
+      type: object
+      required:
+      - id
+      - name
+      - icon_url
+      properties:
+        id:
+          type: integer
+          nullable: true
+          example: 1
+        name:
+          type: string
+          example: Tarea
+        icon_url:
+          type: string
+          nullable: true
+          example: http://localhost:8000/static/icons/tarea.png
+    ActividadDetalle:
+      type: object
+      required:
+      - id
+      - name
+      - type
+      - grade
+      - grade_letter
+      - grading_status
+      properties:
+        id:
+          type: integer
+          example: 100
+        name:
+          type: string
+          example: Tarea 1 - Ecuaciones
+        type:
+          $ref: '#/components/schemas/TipoActividad'
+        grade:
+          type: number
+          format: float
+          nullable: true
+          example: 9.5
+        grade_letter:
+          type: string
+          nullable: true
+          example: null
+        grading_status:
+          type: string
+          enum:
+          - graded
+          - pending
+          example: graded
+    CategoriaDetalle:
+      type: object
+      required:
+      - id
+      - name
+      - percentage
+      - grade
+      - grade_letter
+      - activities
+      properties:
+        id:
+          type: integer
+          example: 30
+        name:
+          type: string
+          example: Tareas
+        percentage:
+          type: number
+          format: float
+          example: 40
+        grade:
+          type: number
+          format: float
+          nullable: true
+          example: 9.0
+        grade_letter:
+          type: string
+          nullable: true
+          example: null
+        activities:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActividadDetalle'
+    ParcialDetalle:
+      type: object
+      required:
+      - id
+      - name
+      - percentage
+      - grade
+      - grade_letter
+      - categories
+      properties:
+        id:
+          type: integer
+          example: 20
+        name:
+          type: string
+          example: Parcial 1
+        percentage:
+          type: number
+          format: float
+          example: 33.33
+        grade:
+          type: number
+          format: float
+          nullable: true
+          example: 8.5
+        grade_letter:
+          type: string
+          nullable: true
+          example: null
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoriaDetalle'
+    ItemEvaluativo:
+      type: object
+      required:
+      - id
+      - name
+      - alias
+      - max_score
+      - total_percentage
+      - grade
+      - grade_letter
+      - grading_books
+      properties:
+        id:
+          type: integer
+          example: 10
+        name:
+          type: string
+          example: 1er Quimestre
+        alias:
+          type: string
+          example: Q1
+        max_score:
+          type: number
+          format: float
+          example: 10
+        total_percentage:
+          type: number
+          format: float
+          example: 50
+        grade:
+          type: number
+          format: float
+          nullable: true
+          example: 8.75
+        grade_letter:
+          type: string
+          nullable: true
+          example: null
+        grading_books:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParcialDetalle'
+    ModeloEvaluativoDetalle:
+      type: object
+      required:
+      - id
+      - name
+      - is_quantitative
+      - items
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Modelo Evaluativo Bachillerato
+        is_quantitative:
+          type: boolean
+          example: true
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemEvaluativo'
+    EstadoMateria:
+      type: object
+      required:
+      - code
+      - label
+      - severity
+      properties:
+        code:
+          type: string
+          enum:
+          - approved
+          - pending
+          - failed
+          example: approved
+        label:
+          type: string
+          example: Aprobado
+        severity:
+          type: string
+          enum:
+          - success
+          - warning
+          - danger
+          example: success
+    MensajeInformativo:
+      type: object
+      required:
+      - title
+      - description
+      properties:
+        title:
+          type: string
+          example: Calificaciones no disponibles
+        description:
+          type: string
+          example: Las calificaciones no están habilitadas para visualización en este
+            periodo.
+    SubjectGradesData:
+      type: object
+      required:
+      - subject
+      - evaluation_model
+      - final_grade
+      - final_grade_letter
+      - status
+      - grades_visible
+      - grades_blocked
+      - block_message
+      - info_message
+      properties:
+        subject:
+          $ref: '#/components/schemas/MateriaDetalle'
+        evaluation_model:
+          $ref: '#/components/schemas/ModeloEvaluativoDetalle'
+          nullable: true
+        final_grade:
+          type: number
+          format: float
+          nullable: true
+          example: 8.25
+        final_grade_letter:
+          type: string
+          nullable: true
+          example: null
+        status:
+          $ref: '#/components/schemas/EstadoMateria'
+          nullable: true
+        grades_visible:
+          type: boolean
+          example: true
+        grades_blocked:
+          type: boolean
+          example: false
+        block_message:
+          $ref: '#/components/schemas/MensajeInformativo'
+          nullable: true
+        info_message:
+          $ref: '#/components/schemas/MensajeInformativo'
+          nullable: true
+    RespuestaSubjectGrades:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            $ref: '#/components/schemas/SubjectGradesData'
+    MateriaInfoDocente:
+      type: object
+      required:
+      - id
+      - name
+      - level
+      - parallel
+      properties:
+        id:
+          type: integer
+          example: 456
+        name:
+          type: string
+          example: Matemáticas
+        level:
+          type: string
+          example: OCTAVO AÑO EGB
+        parallel:
+          type: string
+          example: A
+    EstadoMatriculaDocente:
+      type: object
+      required:
+      - label
+      - status
+      properties:
+        label:
+          type: string
+          example: badge-success
+        status:
+          type: string
+          example: Activo
+    EstudianteRosterItem:
+      type: object
+      required:
+      - id
+      - student_id
+      - persona_id
+      - photo_url
+      - full_name
+      - emails
+      - phone
+      - enrollment_status
+      - attendance_percentage
+      - final_grade
+      properties:
+        id:
+          type: integer
+          example: 12345
+          description: ID de MateriaAsignada
+        student_id:
+          type: integer
+          example: 100
+        persona_id:
+          type: integer
+          example: 5001
+          description: ID de la persona
+        photo_url:
+          type: string
+          example: http://localhost:8000/media/imagen_perfil/2024/01/foto.jpg
+        full_name:
+          type: string
+          example: García López Juan Carlos
+        emails:
+          type: array
+          items:
+            type: string
+          example:
+          - juan.garcia@institucion.edu.ec
+          - juan@correo.com
+        phone:
+          type: string
+          nullable: true
+          example: 0999654321
+        enrollment_status:
+          $ref: '#/components/schemas/EstadoMatriculaDocente'
+        attendance_percentage:
+          type: number
+          format: float
+          example: 95.5
+        final_grade:
+          type: number
+          format: float
+          nullable: true
+          example: 9.25
+    SubjectStudentsData:
+      type: object
+      required:
+      - subject
+      - total_students
+      - students
+      properties:
+        subject:
+          $ref: '#/components/schemas/MateriaInfoDocente'
+        total_students:
+          type: integer
+          example: 25
+        students:
+          type: array
+          items:
+            $ref: '#/components/schemas/EstudianteRosterItem'
+    RespuestaSubjectStudents:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            $ref: '#/components/schemas/SubjectStudentsData'
+  parameters:
+    XPeriodIDHeader:
+      name: X-Period-ID
+      in: header
+      required: false
+      description: ID del periodo lectivo (opcional si se pasa period_id en query).
+      schema:
+        type: integer
+        example: 6
+    MateriaAsignadaIDPath:
+      name: materia_asignada_id
+      in: path
+      required: true
+      description: ID de la MateriaAsignada.
+      schema:
+        type: integer
+        example: 12345
+    MateriaIDPath:
+      name: materia_id
+      in: path
+      required: true
+      description: ID de la Materia.
+      schema:
+        type: integer
+        example: 456
+paths:
+  /auth/sign-in/:
+    post:
+      summary: Autentica un usuario y devuelve tokens JWT
+      description: 'Autentica usuario por `username` (o correo) y `password`.
+
+        Retorna tokens JWT `access` y `refresh`, información del usuario, roles, periodos
+        y flag de cambio obligatorio de clave.
+
+        '
+      operationId: autenticarUsuario
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - username
+              - password
+              properties:
+                username:
+                  type: string
+                  example: jperez
+                  description: Nombre de usuario o dirección de correo electrónico
+                password:
+                  type: string
+                  example: MiClave123
+                  description: Contraseña del usuario
+      responses:
+        '200':
+          description: Login exitoso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaSignIn'
+        '401':
+          description: Credenciales inválidas, usuario no encontrado o inactivo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+  /auth/refresh/:
+    post:
+      summary: Obtiene un nuevo access token usando el refresh token
+      description: 'Al usar este endpoint, el refresh token anterior se invalida (lista
+        negra) y se entrega un nuevo par de tokens.
+
+        '
+      operationId: renovarToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - refresh
+              properties:
+                refresh:
+                  type: string
+                  description: Refresh token JWT válido
+      responses:
+        '200':
+          description: Tokens renovados exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaRefresh'
+        '401':
+          description: Token inválido o expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+  /auth/sign-out/:
+    post:
+      summary: Cierra la sesión e invalida el refresh token
+      description: 'Requiere autenticación mediante el access token en `Authorization:
+        Bearer <token>`.
+
+        Invalida (añade a la lista negra) el refresh token enviado en el cuerpo.
+
+        '
+      operationId: cerrarSesion
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - refresh
+              properties:
+                refresh:
+                  type: string
+                  description: Refresh token a invalidar
+      responses:
+        '205':
+          description: Sesión cerrada exitosamente (Reset Content)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaSignOut'
+        '400':
+          description: Solicitud inválida (falta el refresh token)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '401':
+          description: No autenticado o token expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+  /auth/recover-password/:
+    post:
+      summary: Recuperación/reset de contraseña
+      description: 'Resetea la contraseña a una clave aleatoria segura y la envía
+        por correo electrónico a la persona asociada al usuario.
+
+        '
+      operationId: recuperarPassword
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - username
+              properties:
+                username:
+                  type: string
+                  example: jperez
+                  description: Nombre de usuario
+      responses:
+        '200':
+          description: Nueva contraseña enviada por correo electrónico
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaRecoverPassword'
+        '400':
+          description: Usuario no existe, persona no existe o no tiene correos registrados
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+  /auth/recover-username/:
+    post:
+      summary: Recuperación de nombre de usuario por cédula
+      description: 'Obtiene el nombre de usuario y el nombre completo dada la cédula
+        de la persona.
+
+        '
+      operationId: recuperarUsername
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - cedula
+              properties:
+                cedula:
+                  type: string
+                  example: '1234567890'
+                  description: Número de cédula de la persona
+      responses:
+        '200':
+          description: Usuario encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaRecoverUsername'
+        '400':
+          description: Persona no existe o cédula no encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+  /auth/change-password/:
+    post:
+      summary: Cambio de contraseña para usuario autenticado
+      description: 'Permite a un usuario autenticado modificar su contraseña actual.
+        Revisa políticas de seguridad (mínimo 8 caracteres, mayúsculas, minúsculas,
+        números, sin espacios, diferente a cédula y clave actual).
+
+        '
+      operationId: cambiarPassword
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - old_password
+              - new_password
+              - repeat_password
+              properties:
+                old_password:
+                  type: string
+                  example: MiClaveAnterior123
+                  description: Contraseña actual
+                new_password:
+                  type: string
+                  example: MiNuevaClave456
+                  description: Nueva contraseña
+                repeat_password:
+                  type: string
+                  example: MiNuevaClave456
+                  description: Confirmación de la nueva contraseña
+      responses:
+        '200':
+          description: Contraseña actualizada correctamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaChangePassword'
+        '400':
+          description: Clave insegura, claves no coinciden, o datos inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '401':
+          description: No autenticado o token expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+  /config/branding/:
+    get:
+      summary: Configuración de branding e identidad visual
+      description: 'Retorna logotipos, paleta de colores, enlaces a redes sociales
+        y datos de la institución para personalización dinámica de clientes móviles
+        y web.
+
+        '
+      operationId: obtenerBranding
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Configuración de branding obtenida exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaBranding'
+        '401':
+          description: No autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '500':
+          description: Error al obtener la configuración de branding
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+  /student/calendar/:
+    get:
+      summary: Calendario y agenda de actividades
+      description: 'Retorna la lista de actividades del estudiante filtradas por rango
+        de fecha (vista agenda, mensual o semanal).
+
+        '
+      operationId: obtenerCalendario
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/XPeriodIDHeader'
+      - name: period_id
+        in: query
+        required: false
+        schema:
+          type: integer
+      - name: view
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - agenda
+          - month
+          - week
+          default: agenda
+      - name: date
+        in: query
+        required: false
+        schema:
+          type: string
+          format: date
+          example: '2025-12-01'
+      - name: subject_id
+        in: query
+        required: false
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: Actividades de calendario obtenidas exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaCalendar'
+        '400':
+          description: Vista no válida, formato de fecha inválido o sin periodo activo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '401':
+          description: No autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: Sin perfil estudiante o sin acceso al periodo/materia
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '500':
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+  /student/activity/{id}/:
+    get:
+      summary: Detalle de una actividad específica
+      description: 'Retorna la información completa de una actividad (instrucciones
+        en HTML, archivos adjuntos, enlaces y estado de entrega).
+
+        '
+      operationId: obtenerDetalleActividad
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          example: 123
+      responses:
+        '200':
+          description: Detalle de la actividad obtenido exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaActivityDetail'
+        '401':
+          description: No autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '404':
+          description: Actividad no encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+  /chat-ia/config/:
+    get:
+      summary: Configuración pública de ChatIA
+      description: 'Retorna la identidad pública del asistente IA (ej: Amani) para
+        ser mostrada en la interfaz del cliente. No requiere token.
+
+        '
+      operationId: obtenerConfigPublicaChatIA
+      security: []
+      responses:
+        '200':
+          description: Configuración pública obtenida exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaChatIAPublicConfig'
+        '500':
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+  /chat-ia/sessions/:
+    get:
+      summary: Lista de sesiones de chat activas
+      description: 'Retorna la lista de conversaciones activas del usuario autenticado
+        (excluye las eliminadas por soft-delete).
+
+        '
+      operationId: listarSesionesChat
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de sesiones obtenida exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaListarSesiones'
+        '401':
+          description: No autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '500':
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+  /chat-ia/sessions/{session_id}/:
+    patch:
+      summary: Renombrar título de una sesión
+      description: 'Permite actualizar el título personalizado de una sesión activa
+        (máximo 100 caracteres).
+
+        '
+      operationId: renombrarSesionChat
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - title
+              properties:
+                title:
+                  type: string
+                  maxLength: 100
+                  example: Mi título personalizado
+      responses:
+        '200':
+          description: Título de la sesión actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaRenombrarSesion'
+        '400':
+          description: Título requerido o excede 100 caracteres
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '401':
+          description: No autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '410':
+          description: La sesión fue eliminada (SESSION_DELETED)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+    delete:
+      summary: Eliminar una sesión de chat (Soft delete)
+      description: 'Marca la sesión como eliminada (`status=''deleted''`). Endpoint
+        idempotente.
+
+        '
+      operationId: eliminarSesionChat
+      security:
+      - bearerAuth: []
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Sesión eliminada exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaEliminarSesion'
+        '401':
+          description: No autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '500':
+          description: Error interno al eliminar sesión
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+  /student/subjects/{materia_asignada_id}/planning/:
+    get:
+      summary: Planificación semanal de clases de una materia
+      description: 'Retorna los contenidos, unidades, recursos, actividades y controles
+        de navegación de la planificación de clase de una semana dada.
+
+        '
+      operationId: obtenerPlanificacionClase
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/MateriaAsignadaIDPath'
+      - $ref: '#/components/parameters/XPeriodIDHeader'
+      - name: week
+        in: query
+        required: false
+        description: Número de la semana (1-based). Prioridad sobre fecha.
+        schema:
+          type: integer
+          example: 3
+      - name: date
+        in: query
+        required: false
+        description: Fecha ISO 8601 de referencia.
+        schema:
+          type: string
+          format: date
+          example: '2025-11-18'
+      - name: activities_limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 50
+      - name: activities_offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          default: 0
+      responses:
+        '200':
+          description: Planificación semanal obtenida exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaClassPlanning'
+        '400':
+          description: Parámetros inválidos o falta header X-Period-ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '401':
+          description: No autenticado o token expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: Perfil o permisos insuficientes (IDOR check)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '404':
+          description: Materia o semana no encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '500':
+          description: Error interno al obtener planificación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+  /movil/device/register/:
+    post:
+      summary: Registra o actualiza el token push de un dispositivo
+      description: 'Idempotente: repetir el mismo `token` actualiza la fila existente.
+
+        Devuelve 201 la primera vez y 200 en las siguientes.
+
+        '
+      operationId: registrarDispositivo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - token
+              - plataforma
+              properties:
+                token:
+                  type: string
+                  maxLength: 255
+                plataforma:
+                  type: string
+                  enum:
+                  - android
+                  - ios
+                app_version:
+                  type: string
+                  maxLength: 20
+                modelo_dispositivo:
+                  type: string
+                  maxLength: 120
+      responses:
+        '200':
+          description: Dispositivo actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaDispositivo'
+        '201':
+          description: Dispositivo registrado por primera vez
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaDispositivo'
+        '400':
+          description: Datos inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '401':
+          description: Falta el token JWT o está vencido
+  /student/attendance/report/:
+    get:
+      summary: Reporte de asistencia del estudiante
+      description: 'Retorna las métricas de asistencia acumuladas (por horas y por
+        días) de todas las asignaturas del estudiante.
+
+        '
+      operationId: obtenerReporteAsistencia
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/XPeriodIDHeader'
+      responses:
+        '200':
+          description: Reporte de asistencia obtenido exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaStudentAttendance'
+        '400':
+          description: Header X-Period-ID faltante
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '401':
+          description: No autenticado o token expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: Sin acceso al periodo seleccionado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '404':
+          description: No existe matrícula para el estudiante
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '500':
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+  /student/subjects/:
+    get:
+      summary: Lista de asignaturas del estudiante
+      description: 'Retorna las materias matriculadas por el estudiante en el periodo
+        seleccionado, incluyendo profesor, porcentaje de asistencia en tiempo real
+        y tareas pendientes.
+
+        '
+      operationId: obtenerAsignaturasEstudiante
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/XPeriodIDHeader'
+      responses:
+        '200':
+          description: Lista de asignaturas obtenida exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaStudentSubjects'
+        '400':
+          description: Header X-Period-ID requerido o no numérico
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '401':
+          description: No autenticado o token expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: Perfil de persona/estudiante no encontrado o periodo inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '500':
+          description: Error interno al obtener las materias
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+  /student/summary/:
+    get:
+      summary: Métricas consolidadas del estudiante
+      description: 'Retorna número de materias, porcentaje de asistencia general,
+        tareas pendientes y datos de matrícula.
+
+        '
+      operationId: obtenerResumenEstudiante
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/XPeriodIDHeader'
+      responses:
+        '200':
+          description: Resumen obtenido exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaStudentSummary'
+        '400':
+          description: Header X-Period-ID faltante o inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '401':
+          description: No autenticado o token JWT expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: Usuario sin perfil de estudiante o sin acceso al periodo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '404':
+          description: No existe matrícula activa en el periodo solicitado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '500':
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+  /student/subjects/{materia_asignada_id}/classmates/:
+    get:
+      summary: Lista de compañeros de clase por asignatura
+      description: 'Retorna la lista de estudiantes inscritos en la misma asignatura
+        (excluyendo datos sensibles por privacidad).
+
+        '
+      operationId: obtenerCompanerosMateria
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/MateriaAsignadaIDPath'
+      - $ref: '#/components/parameters/XPeriodIDHeader'
+      responses:
+        '200':
+          description: Lista de compañeros obtenida exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaSubjectClassmates'
+        '400':
+          description: Header X-Period-ID no numérico o faltante
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '401':
+          description: No autenticado o token expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: Sin perfil o la materia no pertenece al estudiante (IDOR Prevention)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '500':
+          description: Error interno al obtener lista de compañeros
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+  /student/subjects/{materia_asignada_id}/grades/:
+    get:
+      summary: Calificaciones detalladas de una materia
+      description: 'Retorna la estructura jerárquica completa de calificaciones (Quimestres
+        -> Parciales -> Categorías -> Actividades) de un estudiante para la asignatura
+        especificada.
+
+        '
+      operationId: obtenerCalificacionesAsignatura
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/MateriaAsignadaIDPath'
+      - $ref: '#/components/parameters/XPeriodIDHeader'
+      responses:
+        '200':
+          description: Calificaciones de la asignatura obtenidas exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaSubjectGrades'
+        '400':
+          description: Header X-Period-ID faltante o invalido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '401':
+          description: No autenticado o token expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: Periodo invalido o sin permisos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '404':
+          description: Materia no encontrada o sin acceso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '500':
+          description: Error al obtener calificaciones
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+  /teacher/subjects/{materia_id}/students/:
+    get:
+      summary: Lista de estudiantes de una materia (Roster docente)
+      description: 'Retorna la nómina de estudiantes matriculados en una asignatura
+        asignada al docente autenticado, con datos de contacto, asistencia y nota
+        final.
+
+        '
+      operationId: obtenerEstudiantesMateriaDocente
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/MateriaIDPath'
+      - $ref: '#/components/parameters/XPeriodIDHeader'
+      responses:
+        '200':
+          description: Nómina de estudiantes obtenida exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaSubjectStudents'
+        '400':
+          description: Header X-Period-ID faltante o no numérico
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '401':
+          description: No autenticado o token expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: Sin perfil docente o sin asignación a la materia
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '500':
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'

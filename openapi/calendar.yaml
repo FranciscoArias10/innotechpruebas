@@ -1,0 +1,250 @@
+openapi: 3.0.3
+info:
+  title: SIGE-UBE — Calendario de Actividades Académicas
+  version: 1.1.0
+  description: |
+    Endpoints para la agenda y calendario de actividades académicas (tareas, exámenes, talleres) y detalle de actividad.
+
+    **El sobre de respuesta es siempre el mismo:**
+    `{"isSuccess": true, "message": "", "data": {}}`
+
+servers:
+  - url: https://sige.innotech-solutions.com.ec/api/v1.0.0
+    description: Staging (datos sintéticos)
+  - url: http://localhost:8000/api/v1.0.0
+    description: Servidor Local
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    XPeriodIDHeader:
+      name: X-Period-ID
+      in: header
+      required: false
+      description: ID del periodo lectivo (opcional si se pasa period_id en query).
+      schema:
+        type: integer
+        example: 6
+
+  schemas:
+    Sobre:
+      type: object
+      required: [isSuccess, message]
+      properties:
+        isSuccess: { type: boolean, example: true }
+        message: { type: string, nullable: true, example: "" }
+
+    ActividadTipo:
+      type: object
+      required: [id, name, icon_url]
+      properties:
+        id: { type: integer, example: 1 }
+        name: { type: string, example: "Tarea" }
+        icon_url: { type: string, nullable: true, example: "/media/icono/2024/01/tarea.svg" }
+
+    GradingInfo:
+      type: object
+      properties:
+        cohort: { type: string, nullable: true, example: "PRIMER QUIMESTRE" }
+        grading_book: { type: string, nullable: true, example: "TAREAS" }
+        category: { type: string, nullable: true, example: "Trabajo individual" }
+
+    SubjectSummaryItem:
+      type: object
+      required: [id, name, parallel]
+      properties:
+        id: { type: integer, example: 45 }
+        name: { type: string, example: "MATEMÁTICAS" }
+        parallel: { type: string, example: "A" }
+
+    StatusActividadCalendar:
+      type: object
+      required: [code, label, badge]
+      properties:
+        code: { type: string, enum: [pending, submitted, completed, overdue], example: "pending" }
+        label: { type: string, example: "Pendiente" }
+        badge: { type: string, enum: [warning, info, success, danger], example: "warning" }
+
+    SubmissionInfo:
+      type: object
+      required: [required, submitted, deadline_passed]
+      properties:
+        required: { type: boolean, example: true }
+        submitted: { type: boolean, example: false }
+        deadline_passed: { type: boolean, example: false }
+
+    ActividadCalendarItem:
+      type: object
+      required: [id, title, description, start, end, color, type, grading_type, delivery_type, requires_submission, grading_info, subject, status, submission, attachments, links, time_remaining, week_number, can_submit]
+      properties:
+        id: { type: integer, example: 123 }
+        title: { type: string, example: "Tarea: Ejercicios de Matemáticas" }
+        description: { type: string, example: "Resolver ejercicios del capítulo 5..." }
+        start: { type: string, format: date-time, example: "2025-12-10T08:00:00-05:00" }
+        end: { type: string, format: date-time, example: "2025-12-15T23:59:00-05:00" }
+        color: { type: string, example: "#E57373" }
+        type: { $ref: '#/components/schemas/ActividadTipo' }
+        grading_type: { type: string, nullable: true, example: "Cuantitativa" }
+        delivery_type: { type: string, nullable: true, example: "Permitir envío" }
+        requires_submission: { type: boolean, example: true }
+        grading_info: { $ref: '#/components/schemas/GradingInfo', nullable: true }
+        subject: { $ref: '#/components/schemas/SubjectSummaryItem' }
+        status: { $ref: '#/components/schemas/StatusActividadCalendar' }
+        submission: { $ref: '#/components/schemas/SubmissionInfo' }
+        attachments:
+          type: object
+          properties:
+            has_attachments: { type: boolean, example: true }
+            count: { type: integer, example: 1 }
+        links:
+          type: object
+          properties:
+            has_links: { type: boolean, example: false }
+        time_remaining: { type: string, nullable: true, example: "5 días, 3 horas" }
+        week_number: { type: integer, example: 12 }
+        can_submit: { type: boolean, example: true }
+
+    CalendarSummary:
+      type: object
+      required: [total, pending, completed, overdue]
+      properties:
+        total: { type: integer, example: 15 }
+        pending: { type: integer, example: 5 }
+        completed: { type: integer, example: 8 }
+        overdue: { type: integer, example: 2 }
+
+    CalendarData:
+      type: object
+      required: [view, period, range, summary, activities]
+      properties:
+        view: { type: string, enum: [agenda, month, week], example: "agenda" }
+        period:
+          type: object
+          properties:
+            id: { type: integer, example: 6 }
+            name: { type: string, example: "PERIODO LECTIVO 2024 - 2025" }
+        range:
+          type: object
+          properties:
+            start: { type: string, format: date-time }
+            end: { type: string, format: date-time }
+        summary: { $ref: '#/components/schemas/CalendarSummary' }
+        activities:
+          type: array
+          items: { $ref: '#/components/schemas/ActividadCalendarItem' }
+
+    RespuestaCalendar:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          required: [data]
+          properties:
+            data: { $ref: '#/components/schemas/CalendarData' }
+
+    RespuestaActivityDetail:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          required: [data]
+          properties:
+            data: { $ref: '#/components/schemas/ActividadCalendarItem' }
+
+    RespuestaError:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          properties:
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items: { type: string }
+
+paths:
+  /student/calendar/:
+    get:
+      summary: Calendario y agenda de actividades
+      description: |
+        Retorna la lista de actividades del estudiante filtradas por rango de fecha (vista agenda, mensual o semanal).
+      operationId: obtenerCalendario
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XPeriodIDHeader'
+        - name: period_id
+          in: query
+          required: false
+          schema: { type: integer }
+        - name: view
+          in: query
+          required: false
+          schema: { type: string, enum: [agenda, month, week], default: agenda }
+        - name: date
+          in: query
+          required: false
+          schema: { type: string, format: date, example: "2025-12-01" }
+        - name: subject_id
+          in: query
+          required: false
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Actividades de calendario obtenidas exitosamente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaCalendar' }
+        '400':
+          description: Vista no válida, formato de fecha inválido o sin periodo activo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '401':
+          description: No autenticado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '403':
+          description: Sin perfil estudiante o sin acceso al periodo/materia
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '500':
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+
+  /student/activity/{id}/:
+    get:
+      summary: Detalle de una actividad específica
+      description: |
+        Retorna la información completa de una actividad (instrucciones en HTML, archivos adjuntos, enlaces y estado de entrega).
+      operationId: obtenerDetalleActividad
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, example: 123 }
+      responses:
+        '200':
+          description: Detalle de la actividad obtenido exitosamente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaActivityDetail' }
+        '401':
+          description: No autenticado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '404':
+          description: Actividad no encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }

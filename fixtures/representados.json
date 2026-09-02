@@ -1,0 +1,16 @@
+[
+  {
+    "estudiante_id": 4412,
+    "persona_id": 8801,
+    "nombre_completo": "Martínez Loor Ana Paula",
+    "nivel": "8vo EGB",
+    "paralelo": "A"
+  },
+  {
+    "estudiante_id": 4587,
+    "persona_id": 8934,
+    "nombre_completo": "Martínez Loor Diego Andrés",
+    "nivel": "3ro BGU",
+    "paralelo": "B"
+  }
+]
