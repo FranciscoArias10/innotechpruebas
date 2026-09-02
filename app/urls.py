@@ -15,6 +15,7 @@ from app.views import (
     RepresentativeStudentGradesView,
     RepresentativeStudentAttendanceView,
     RepresentativeStudentScheduleView,
+    RepresentativeStudentSummaryView,
 )
 
 urlpatterns = [
@@ -25,5 +26,6 @@ urlpatterns = [
     path('representative/students/<int:student_id>/grades/', RepresentativeStudentGradesView.as_view(), name='movil-representative-student-grades'),
     path('representative/students/<int:student_id>/attendance/', RepresentativeStudentAttendanceView.as_view(), name='movil-representative-student-attendance'),
     path('representative/students/<int:student_id>/schedule/', RepresentativeStudentScheduleView.as_view(), name='movil-representative-student-schedule'),
+    path('representative/students/<int:student_id>/summary/', RepresentativeStudentSummaryView.as_view(), name='movil-representative-student-summary'),
 ]
 

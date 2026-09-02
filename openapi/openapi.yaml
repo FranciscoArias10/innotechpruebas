@@ -1260,6 +1260,469 @@ components:
         properties:
           data:
             $ref: '#/components/schemas/PreferenciaNotificacion'
+    AsistenciaEstadisticas:
+      type: object
+      required:
+      - attended
+      - justified
+      - pending
+      - absent
+      - total
+      - percentage
+      properties:
+        attended:
+          type: integer
+          example: 35
+        justified:
+          type: integer
+          example: 2
+        pending:
+          type: integer
+          example: 1
+        absent:
+          type: integer
+          example: 2
+        total:
+          type: integer
+          example: 40
+        percentage:
+          type: number
+          format: float
+          example: 92.5
+    MateriaAsistencia:
+      type: object
+      required:
+      - cronograma_id
+      - name
+      - by_hours
+      - by_days
+      - status
+      properties:
+        cronograma_id:
+          type: integer
+          example: 101
+        name:
+          type: string
+          example: LENGUA Y LITERATURA
+        by_hours:
+          $ref: '#/components/schemas/AsistenciaEstadisticas'
+        by_days:
+          $ref: '#/components/schemas/AsistenciaEstadisticas'
+        status:
+          type: string
+          example: excelente
+    AsistenciaEstudianteData:
+      type: object
+      required:
+      - subjects
+      properties:
+        subjects:
+          type: array
+          items:
+            $ref: '#/components/schemas/MateriaAsistencia'
+    RespuestaAsistenciaEstudiante:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            $ref: '#/components/schemas/AsistenciaEstudianteData'
+    MateriaDetalle:
+      type: object
+      required:
+      - id
+      - name
+      - level
+      - parallel
+      - start_date
+      - end_date
+      - total_weeks
+      - pending_activities
+      properties:
+        id:
+          type: integer
+          example: 123
+        name:
+          type: string
+          example: MATEMÁTICA
+        level:
+          type: string
+          example: 1ro BGU
+        parallel:
+          type: string
+          example: A
+        start_date:
+          type: string
+          format: date
+          nullable: true
+          example: '2025-09-01'
+        end_date:
+          type: string
+          format: date
+          nullable: true
+          example: '2026-06-30'
+        total_weeks:
+          type: integer
+          example: 40
+        pending_activities:
+          type: integer
+          example: 5
+    ActividadDetalle:
+      type: object
+      required:
+      - id
+      - name
+      - grade
+      - grade_letter
+      properties:
+        id:
+          type: integer
+          example: 100
+        name:
+          type: string
+          example: Tarea 1 - Ecuaciones
+        grade:
+          type: number
+          format: float
+          nullable: true
+          example: 9.0
+        grade_letter:
+          type: string
+          nullable: true
+          example: null
+    CategoriaDetalle:
+      type: object
+      required:
+      - id
+      - name
+      - percentage
+      - grade
+      - grade_letter
+      - activities
+      properties:
+        id:
+          type: integer
+          example: 30
+        name:
+          type: string
+          example: Tareas
+        percentage:
+          type: number
+          format: float
+          example: 40
+        grade:
+          type: number
+          format: float
+          nullable: true
+          example: 9.0
+        grade_letter:
+          type: string
+          nullable: true
+          example: null
+        activities:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActividadDetalle'
+    ParcialDetalle:
+      type: object
+      required:
+      - id
+      - name
+      - percentage
+      - grade
+      - grade_letter
+      - categories
+      properties:
+        id:
+          type: integer
+          example: 20
+        name:
+          type: string
+          example: Parcial 1
+        percentage:
+          type: number
+          format: float
+          example: 33.33
+        grade:
+          type: number
+          format: float
+          nullable: true
+          example: 8.5
+        grade_letter:
+          type: string
+          nullable: true
+          example: null
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoriaDetalle'
+    ItemEvaluativo:
+      type: object
+      required:
+      - id
+      - name
+      - alias
+      - max_score
+      - total_percentage
+      - grade
+      - grade_letter
+      - grading_books
+      properties:
+        id:
+          type: integer
+          example: 10
+        name:
+          type: string
+          example: 1er Quimestre
+        alias:
+          type: string
+          example: Q1
+        max_score:
+          type: number
+          format: float
+          example: 10
+        total_percentage:
+          type: number
+          format: float
+          example: 50
+        grade:
+          type: number
+          format: float
+          nullable: true
+          example: 8.75
+        grade_letter:
+          type: string
+          nullable: true
+          example: null
+        grading_books:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParcialDetalle'
+    ModeloEvaluativoDetalle:
+      type: object
+      required:
+      - id
+      - name
+      - is_quantitative
+      - items
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Modelo Evaluativo Bachillerato
+        is_quantitative:
+          type: boolean
+          example: true
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemEvaluativo'
+    NotasEstudianteData:
+      type: object
+      required:
+      - subject
+      - evaluation_model
+      properties:
+        subject:
+          $ref: '#/components/schemas/MateriaDetalle'
+        evaluation_model:
+          $ref: '#/components/schemas/ModeloEvaluativoDetalle'
+    RespuestaNotasEstudiante:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            $ref: '#/components/schemas/NotasEstudianteData'
+    ClaseHorario:
+      type: object
+      required:
+      - nombre
+      - paralelo
+      - aula
+      - profesor
+      - fecha_inicio
+      - fecha_fin
+      - color
+      properties:
+        nombre:
+          type: string
+          example: MATEMÁTICA
+        paralelo:
+          type: string
+          example: A
+        aula:
+          type: string
+          example: Aula 101
+        profesor:
+          type: string
+          example: Juan Perez
+        fecha_inicio:
+          type: string
+          format: date
+          example: '2025-09-01'
+        fecha_fin:
+          type: string
+          format: date
+          example: '2026-06-30'
+        color:
+          type: string
+          example: '#FF5733'
+    DiaVisible:
+      type: object
+      required:
+      - indice
+      - nombre
+      - clases
+      properties:
+        indice:
+          type: integer
+          example: 1
+        nombre:
+          type: string
+          example: Lunes
+        clases:
+          type: array
+          items:
+            type: object
+    DiaClase:
+      type: object
+      required:
+      - indice
+      - nombre
+      - clases
+      properties:
+        indice:
+          type: integer
+          example: 1
+        nombre:
+          type: string
+          example: Lunes
+        clases:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClaseHorario'
+    TurnoHorario:
+      type: object
+      required:
+      - id
+      - nombre
+      - nombre_corto
+      - aplica_asistencia
+      - dias
+      properties:
+        id:
+          type: integer
+          example: 1
+        nombre:
+          type: string
+          example: Matutino
+        nombre_corto:
+          type: string
+          example: Mat
+        aplica_asistencia:
+          type: boolean
+          example: true
+        dias:
+          type: array
+          items:
+            $ref: '#/components/schemas/DiaClase'
+    HorarioEstudianteData:
+      type: object
+      required:
+      - turnos
+      - dias_visibles
+      properties:
+        turnos:
+          type: array
+          items:
+            $ref: '#/components/schemas/TurnoHorario'
+        dias_visibles:
+          type: array
+          items:
+            $ref: '#/components/schemas/DiaVisible'
+    RespuestaHorarioEstudiante:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            $ref: '#/components/schemas/HorarioEstudianteData'
+    MatriculaInfo:
+      type: object
+      required:
+      - id
+      - level
+      - level_alias
+      - parallel
+      properties:
+        id:
+          type: integer
+          example: 9876
+        level:
+          type: string
+          example: OCTAVO AÑO DE EDUCACIÓN GENERAL BÁSICA
+        level_alias:
+          type: string
+          example: 8vo EGB
+        parallel:
+          type: string
+          example: A
+    PeriodoDetalle:
+      type: object
+      required:
+      - id
+      - name
+      properties:
+        id:
+          type: integer
+          example: 6
+        name:
+          type: string
+          example: PERIODO LECTIVO 2024 - 2025
+    RepresentativeStudentSummaryData:
+      type: object
+      required:
+      - total_subjects
+      - attendance_percentage
+      - pending_activities
+      - enrollment
+      - period
+      properties:
+        total_subjects:
+          type: integer
+          example: 8
+          description: Total de materias activas del estudiante en el periodo.
+        attendance_percentage:
+          type: number
+          format: float
+          example: 95.5
+          description: Porcentaje de asistencia general acumulado (0 a 100).
+        pending_activities:
+          type: integer
+          example: 3
+          description: Número de actividades o tareas pendientes de entrega.
+        enrollment:
+          $ref: '#/components/schemas/MatriculaInfo'
+        period:
+          $ref: '#/components/schemas/PeriodoDetalle'
+    RespuestaRepresentativeStudentSummary:
+      allOf:
+      - $ref: '#/components/schemas/Sobre'
+      - type: object
+        required:
+        - data
+        properties:
+          data:
+            $ref: '#/components/schemas/RepresentativeStudentSummaryData'
     EstudianteBase:
       type: object
       required:
@@ -1485,38 +1948,6 @@ components:
         properties:
           data:
             $ref: '#/components/schemas/StudentSubjectsData'
-    MatriculaInfo:
-      type: object
-      required:
-      - id
-      - level
-      - level_alias
-      - parallel
-      properties:
-        id:
-          type: integer
-          example: 9876
-        level:
-          type: string
-          example: OCTAVO AÑO DE EDUCACIÓN GENERAL BÁSICA
-        level_alias:
-          type: string
-          example: 8vo EGB
-        parallel:
-          type: string
-          example: A
-    PeriodoDetalle:
-      type: object
-      required:
-      - id
-      - name
-      properties:
-        id:
-          type: integer
-          example: 6
-        name:
-          type: string
-          example: PERIODO LECTIVO 2024 - 2025
     StudentSummaryData:
       type: object
       required:
@@ -1619,46 +2050,6 @@ components:
         properties:
           data:
             $ref: '#/components/schemas/SubjectClassmatesData'
-    MateriaDetalle:
-      type: object
-      required:
-      - id
-      - name
-      - level
-      - parallel
-      - start_date
-      - end_date
-      - total_weeks
-      - pending_activities
-      properties:
-        id:
-          type: integer
-          example: 123
-        name:
-          type: string
-          example: Matemáticas
-        level:
-          type: string
-          example: 1ro BGU
-        parallel:
-          type: string
-          example: A
-        start_date:
-          type: string
-          format: date
-          nullable: true
-          example: '2025-09-01'
-        end_date:
-          type: string
-          format: date
-          nullable: true
-          example: '2026-06-30'
-        total_weeks:
-          type: integer
-          example: 40
-        pending_activities:
-          type: integer
-          example: 5
     TipoActividad:
       type: object
       required:
@@ -1677,168 +2068,6 @@ components:
           type: string
           nullable: true
           example: http://localhost:8000/static/icons/tarea.png
-    ActividadDetalle:
-      type: object
-      required:
-      - id
-      - name
-      - type
-      - grade
-      - grade_letter
-      - grading_status
-      properties:
-        id:
-          type: integer
-          example: 100
-        name:
-          type: string
-          example: Tarea 1 - Ecuaciones
-        type:
-          $ref: '#/components/schemas/TipoActividad'
-        grade:
-          type: number
-          format: float
-          nullable: true
-          example: 9.5
-        grade_letter:
-          type: string
-          nullable: true
-          example: null
-        grading_status:
-          type: string
-          enum:
-          - graded
-          - pending
-          example: graded
-    CategoriaDetalle:
-      type: object
-      required:
-      - id
-      - name
-      - percentage
-      - grade
-      - grade_letter
-      - activities
-      properties:
-        id:
-          type: integer
-          example: 30
-        name:
-          type: string
-          example: Tareas
-        percentage:
-          type: number
-          format: float
-          example: 40
-        grade:
-          type: number
-          format: float
-          nullable: true
-          example: 9.0
-        grade_letter:
-          type: string
-          nullable: true
-          example: null
-        activities:
-          type: array
-          items:
-            $ref: '#/components/schemas/ActividadDetalle'
-    ParcialDetalle:
-      type: object
-      required:
-      - id
-      - name
-      - percentage
-      - grade
-      - grade_letter
-      - categories
-      properties:
-        id:
-          type: integer
-          example: 20
-        name:
-          type: string
-          example: Parcial 1
-        percentage:
-          type: number
-          format: float
-          example: 33.33
-        grade:
-          type: number
-          format: float
-          nullable: true
-          example: 8.5
-        grade_letter:
-          type: string
-          nullable: true
-          example: null
-        categories:
-          type: array
-          items:
-            $ref: '#/components/schemas/CategoriaDetalle'
-    ItemEvaluativo:
-      type: object
-      required:
-      - id
-      - name
-      - alias
-      - max_score
-      - total_percentage
-      - grade
-      - grade_letter
-      - grading_books
-      properties:
-        id:
-          type: integer
-          example: 10
-        name:
-          type: string
-          example: 1er Quimestre
-        alias:
-          type: string
-          example: Q1
-        max_score:
-          type: number
-          format: float
-          example: 10
-        total_percentage:
-          type: number
-          format: float
-          example: 50
-        grade:
-          type: number
-          format: float
-          nullable: true
-          example: 8.75
-        grade_letter:
-          type: string
-          nullable: true
-          example: null
-        grading_books:
-          type: array
-          items:
-            $ref: '#/components/schemas/ParcialDetalle'
-    ModeloEvaluativoDetalle:
-      type: object
-      required:
-      - id
-      - name
-      - is_quantitative
-      - items
-      properties:
-        id:
-          type: integer
-          example: 1
-        name:
-          type: string
-          example: Modelo Evaluativo Bachillerato
-        is_quantitative:
-          type: boolean
-          example: true
-        items:
-          type: array
-          items:
-            $ref: '#/components/schemas/ItemEvaluativo'
     EstadoMateria:
       type: object
       required:
@@ -2054,6 +2283,22 @@ components:
       schema:
         type: integer
         example: 12345
+    StudentIDPath:
+      name: student_id
+      in: path
+      required: true
+      description: ID del estudiante representado.
+      schema:
+        type: integer
+        example: 4412
+    MateriaAsignadaIDQuery:
+      name: materia_asignada_id
+      in: query
+      required: true
+      description: ID de la materia asignada al estudiante.
+      schema:
+        type: integer
+        example: 123
     MateriaIDPath:
       name: materia_id
       in: path
@@ -2852,6 +3097,208 @@ paths:
                 $ref: '#/components/schemas/RespuestaError'
         '401':
           description: No autenticado o token vencido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+  /movil/representative/students/{student_id}/attendance/:
+    get:
+      summary: Asistencia de un estudiante representado
+      description: 'Devuelve el consolidado de asistencia de un estudiante.
+
+        Requiere que el usuario autenticado sea representante del estudiante indicado.
+
+        '
+      operationId: obtenerAsistenciaEstudianteRepresentado
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/StudentIDPath'
+      - $ref: '#/components/parameters/XPeriodIDHeader'
+      responses:
+        '200':
+          description: Asistencia obtenida exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaAsistenciaEstudiante'
+        '400':
+          description: Header X-Period-ID faltante o inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '401':
+          description: No autenticado o token expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: El usuario autenticado no representa a este estudiante
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '404':
+          description: Asistencia no encontrada para el estudiante
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '500':
+          description: Error del servidor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+  /movil/representative/students/{student_id}/grades/:
+    get:
+      summary: Calificaciones de un estudiante representado
+      description: 'Devuelve el libro de calificaciones de un estudiante en una materia
+        específica.
+
+        Requiere que el usuario autenticado sea representante del estudiante indicado.
+
+        '
+      operationId: obtenerNotasEstudianteRepresentado
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/StudentIDPath'
+      - $ref: '#/components/parameters/XPeriodIDHeader'
+      - $ref: '#/components/parameters/MateriaAsignadaIDQuery'
+      responses:
+        '200':
+          description: Notas obtenidas exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaNotasEstudiante'
+        '400':
+          description: Header X-Period-ID o parámetro materia_asignada_id faltante
+            o inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '401':
+          description: No autenticado o token expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: El usuario autenticado no representa a este estudiante
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '404':
+          description: Materia asignada no encontrada para el estudiante
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '500':
+          description: Error del servidor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+  /movil/representative/students/{student_id}/schedule/:
+    get:
+      summary: Horario de un estudiante representado
+      description: 'Devuelve el horario semanal de clases de un estudiante.
+
+        Requiere que el usuario autenticado sea representante del estudiante indicado.
+
+        '
+      operationId: obtenerHorarioEstudianteRepresentado
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/StudentIDPath'
+      - $ref: '#/components/parameters/XPeriodIDHeader'
+      responses:
+        '200':
+          description: Horario obtenido exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaHorarioEstudiante'
+        '400':
+          description: Header X-Period-ID faltante o inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '401':
+          description: No autenticado o token expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: El usuario autenticado no representa a este estudiante
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '404':
+          description: Horario no encontrado para el estudiante
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '500':
+          description: Error del servidor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+  /representative/students/{student_id}/summary/:
+    get:
+      summary: Consulta el resumen académico del estudiante representado.
+      description: 'Devuelve métricas consolidadas (materias, asistencia, tareas pendientes,
+        matrícula y periodo) para la pantalla de inicio del representante.
+
+        Exige autenticación por JWT Bearer y verificación de parentesco activo.
+
+        '
+      operationId: consultarResumenEstudianteRepresentado
+      security:
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/StudentIDPath'
+      - $ref: '#/components/parameters/XPeriodIDHeader'
+      responses:
+        '200':
+          description: Resumen académico recuperado con éxito.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaRepresentativeStudentSummary'
+        '400':
+          description: Header X-Period-ID faltante o formato inválido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '401':
+          description: No autenticado o token vencido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: El usuario autenticado no representa al estudiante especificado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '404':
+          description: El estudiante no cuenta con matrícula en el periodo indicado.
           content:
             application/json:
               schema:

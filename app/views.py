@@ -368,3 +368,56 @@ class RepresentativeStudentScheduleView(APIView):
         respuesta.set_status(status.HTTP_200_OK)
         return respuesta.to_dict()
 
+
+class RepresentativeStudentSummaryView(APIView):
+    """
+    GET /api/v1.0.0/movil/representative/students/<int:student_id>/summary/
+
+    Devuelve el resumen académico consolidado de un estudiante para el dashboard.
+    Verifica parentesco mediante el permiso EsRepresentanteDelEstudiante.
+    """
+    permission_classes = [IsAuthenticated, EsRepresentanteDelEstudiante]
+
+    def get(self, request, student_id):
+        respuesta = RespuestaApi()
+
+        periodo_hdr = request.headers.get('X-Period-ID') or request.META.get('HTTP_X_PERIOD_ID')
+        if not periodo_hdr:
+            respuesta.set_success(False)
+            respuesta.set_message('Header X-Period-ID es requerido.')
+            respuesta.set_errors({'X-Period-ID': ['Este header es obligatorio.']})
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+            return respuesta.to_dict()
+
+        try:
+            periodo_id = int(periodo_hdr)
+        except (ValueError, TypeError):
+            respuesta.set_success(False)
+            respuesta.set_message('Header X-Period-ID debe ser entero.')
+            respuesta.set_errors({'X-Period-ID': ['Formato de entero inválido.']})
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+            return respuesta.to_dict()
+
+        try:
+            datos_resumen = portal.resumen_estudiante(
+                persona_id=student_id,
+                periodo_id=periodo_id
+            )
+        except LookupError:
+            respuesta.set_success(False)
+            respuesta.set_message('Resumen no encontrado para el estudiante en este periodo.')
+            respuesta.set_status(status.HTTP_404_NOT_FOUND)
+            return respuesta.to_dict()
+        except Exception:
+            respuesta.set_success(False)
+            respuesta.set_message('Error al obtener el resumen académico.')
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return respuesta.to_dict()
+
+        respuesta.set_success(True)
+        respuesta.set_message('Resumen académico recuperado con éxito.')
+        respuesta.set_data(datos_resumen)
+        respuesta.set_status(status.HTTP_200_OK)
+        return respuesta.to_dict()
+
+
