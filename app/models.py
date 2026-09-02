@@ -38,3 +38,27 @@ class DispositivoRegistrado(ModeloBase):
         verbose_name_plural = u'Dispositivos registrados'
         ordering = ['-fecha_modificacion']
         unique_together = ('usuario', 'token')
+
+
+class VersionAppMovil(ModeloBase):
+    """Información sobre la versión de la app móvil y forzado de actualización."""
+    
+    ANDROID = 'android'
+    IOS = 'ios'
+    PLATAFORMA = ((ANDROID, u'Android'), (IOS, u'iOS'))
+
+    plataforma = models.CharField(
+        max_length=10, choices=PLATAFORMA, unique=True, verbose_name=u'Plataforma')
+    version_minima = models.CharField(
+        max_length=20, default='1.0.0', verbose_name=u'Versión mínima soportada')
+    version_actual = models.CharField(
+        max_length=20, default='1.0.0', verbose_name=u'Versión actual')
+    forzar_actualizacion = models.BooleanField(
+        default=False, verbose_name=u'Forzar actualización global')
+
+    def __str__(self):
+        return u'Versión %s: Mín %s / Act %s' % (self.get_plataforma_display(), self.version_minima, self.version_actual)
+
+    class Meta:
+        verbose_name = u'Versión App Móvil'
+        verbose_name_plural = u'Versiones App Móvil'

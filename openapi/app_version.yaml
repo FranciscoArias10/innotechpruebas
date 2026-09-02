@@ -1,0 +1,81 @@
+openapi: 3.0.3
+info:
+  title: SIGE-UBE — API móvil (Versión App)
+  version: 1.0.0
+  description: |
+    Endpoint para consultar la versión actual soportada de la aplicación móvil.
+
+servers:
+  - url: https://sige.innotech-solutions.com.ec/api/v1.0.0
+    description: Staging (datos sintéticos)
+
+components:
+  schemas:
+    Sobre:
+      type: object
+      required: [isSuccess, message]
+      properties:
+        isSuccess: { type: boolean }
+        message:   { type: string, nullable: true }
+
+    AppVersionInfo:
+      type: object
+      required: [plataforma, version_minima, version_actual, forzar_actualizacion]
+      properties:
+        plataforma:           { type: string, enum: [android, ios] }
+        version_minima:       { type: string, example: "1.0.0" }
+        version_actual:       { type: string, example: "1.2.0" }
+        forzar_actualizacion: { type: boolean, example: false }
+
+    RespuestaAppVersion:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          required: [data]
+          properties:
+            data: { $ref: '#/components/schemas/AppVersionInfo' }
+
+    RespuestaError:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          properties:
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items: { type: string }
+
+paths:
+  /movil/app/version/:
+    get:
+      summary: Consulta la versión mínima soportada y si requiere actualización forzada.
+      description: |
+        No requiere autenticación. Retorna la información de versión para la plataforma indicada.
+        Se puede pasar la plataforma como query parameter (ej: `?plataforma=android` o `?plataforma=ios`).
+        Si no se indica plataforma, por defecto asume `android`.
+      operationId: consultarVersionApp
+      parameters:
+        - name: plataforma
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [android, ios]
+            default: android
+      responses:
+        '200':
+          description: Versión recuperada con éxito
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaAppVersion' }
+        '400':
+          description: Parámetros inválidos
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '429':
+          description: Límite de tasa excedido
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
