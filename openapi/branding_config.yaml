@@ -1,0 +1,107 @@
+openapi: 3.0.3
+info:
+  title: SIGE-UBE — Configuración de Branding Institucional
+  version: 1.0.0
+  description: |
+    Endpoint para obtener colores, logotipos, información y redes sociales institucionales.
+
+    **El sobre de respuesta es siempre el mismo:**
+    `{"isSuccess": true, "message": "texto", "data": {}}`
+
+servers:
+  - url: https://sige.innotech-solutions.com.ec/api/v1.0.0
+    description: Staging (datos sintéticos)
+  - url: http://localhost:8000/api/v1.0.0
+    description: Servidor Local
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Sobre:
+      type: object
+      required: [isSuccess, message]
+      properties:
+        isSuccess: { type: boolean, example: true }
+        message: { type: string, nullable: true, example: "Configuración obtenida exitosamente" }
+
+    RedesSociales:
+      type: object
+      properties:
+        facebook: { type: string, nullable: true, example: "https://www.facebook.com/miinstitucion" }
+        instagram: { type: string, nullable: true, example: "https://www.instagram.com/miinstitucion" }
+        twitter: { type: string, nullable: true, example: null }
+        youtube: { type: string, nullable: true, example: null }
+
+    BrandingData:
+      type: object
+      required: [name, name_key, slogan, base_path, email_domain, phone, address, website_url, logo_sign_in, logo_sm_sign_in, logo_admin, logo_sm_admin, favicon, logo_email_banner, logo_email_footer, color_primary, color_secondary, social, platform_version]
+      properties:
+        name: { type: string, example: "Sistema Integrado de Gestión Educativa" }
+        name_key: { type: string, example: "SIGE" }
+        slogan: { type: string, example: "Educación de calidad para todos" }
+        base_path: { type: string, example: "https://sige.example.edu.ec/" }
+        email_domain: { type: string, example: "example.edu.ec" }
+        phone: { type: string, example: "0999123456" }
+        address: { type: string, example: "Av. Principal #123, Guayaquil, Ecuador" }
+        website_url: { type: string, example: "https://example.edu.ec" }
+        logo_sign_in: { type: string, example: "/media/repositorio/pdf/2024/01/logo-sign-in.png" }
+        logo_sm_sign_in: { type: string, example: "/media/repositorio/pdf/2024/01/logo-sm-sign-in.png" }
+        logo_admin: { type: string, example: "/media/repositorio/pdf/2024/01/logo-admin.png" }
+        logo_sm_admin: { type: string, example: "/media/repositorio/pdf/2024/01/logo-admin-sm.png" }
+        favicon: { type: string, example: "/static/v-1.0.0/img/favicon.png" }
+        logo_email_banner: { type: string, example: "/static/v-1.0.0/img/logo-email-banner.png" }
+        logo_email_footer: { type: string, example: "/static/v-1.0.0/img/logo-email-footer.png" }
+        color_primary: { type: string, example: "#04205b" }
+        color_secondary: { type: string, example: "#ffaa46" }
+        social: { $ref: '#/components/schemas/RedesSociales' }
+        platform_version: { type: string, example: "0.1.5" }
+
+    RespuestaBranding:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          required: [data]
+          properties:
+            data: { $ref: '#/components/schemas/BrandingData' }
+
+    RespuestaError:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          properties:
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items: { type: string }
+
+paths:
+  /config/branding/:
+    get:
+      summary: Configuración de branding e identidad visual
+      description: |
+        Retorna logotipos, paleta de colores, enlaces a redes sociales y datos de la institución para personalización dinámica de clientes móviles y web.
+      operationId: obtenerBranding
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Configuración de branding obtenida exitosamente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaBranding' }
+        '401':
+          description: No autenticado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '500':
+          description: Error al obtener la configuración de branding
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }

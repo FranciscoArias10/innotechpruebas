@@ -1,0 +1,58 @@
+{
+  "turnos": [
+    {
+      "id": 1,
+      "nombre": "MATUTINO",
+      "nombre_corto": "MAT",
+      "aplica_asistencia": true,
+      "dias": [
+        {
+          "indice": 1,
+          "nombre": "LUNES",
+          "clases": [
+            {
+              "nombre": "MATEMÁTICA",
+              "paralelo": "A",
+              "aula": "Aula 12",
+              "profesor": "Cedeño Vera Luis Alberto",
+              "fecha_inicio": "2025-09-01",
+              "fecha_fin": "2026-06-30",
+              "color": "#1D5F67"
+            },
+            {
+              "nombre": "LENGUA Y LITERATURA",
+              "paralelo": "A",
+              "aula": "Aula 12",
+              "profesor": "Zambrano Pico María Fernanda",
+              "fecha_inicio": "2025-09-01",
+              "fecha_fin": "2026-06-30",
+              "color": "#9C4E1B"
+            }
+          ]
+        },
+        {
+          "indice": 2,
+          "nombre": "MARTES",
+          "clases": [
+            {
+              "nombre": "CIENCIAS NATURALES",
+              "paralelo": "A",
+              "aula": "Laboratorio 2",
+              "profesor": "Mendoza Álava Carlos Julio",
+              "fecha_inicio": "2025-09-01",
+              "fecha_fin": "2026-06-30",
+              "color": "#47682F"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "dias_visibles": [
+    {"indice": 1, "nombre": "LUNES", "clases": []},
+    {"indice": 2, "nombre": "MARTES", "clases": []},
+    {"indice": 3, "nombre": "MIÉRCOLES", "clases": []},
+    {"indice": 4, "nombre": "JUEVES", "clases": []},
+    {"indice": 5, "nombre": "VIERNES", "clases": []}
+  ]
+}

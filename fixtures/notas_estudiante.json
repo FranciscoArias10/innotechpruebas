@@ -1,0 +1,60 @@
+{
+  "subject": {
+    "id": 123,
+    "name": "MATEMÁTICA",
+    "level": "1ro BGU",
+    "parallel": "A",
+    "start_date": "2025-09-01",
+    "end_date": "2026-06-30",
+    "total_weeks": 40,
+    "pending_activities": 5
+  },
+  "evaluation_model": {
+    "id": 1,
+    "name": "Modelo Evaluativo Bachillerato",
+    "is_quantitative": true,
+    "items": [
+      {
+        "id": 10,
+        "name": "1er Quimestre",
+        "alias": "Q1",
+        "max_score": 10,
+        "total_percentage": 50,
+        "grade": 8.75,
+        "grade_letter": null,
+        "grading_books": [
+          {
+            "id": 20,
+            "name": "Parcial 1",
+            "percentage": 33.33,
+            "grade": 8.5,
+            "grade_letter": null,
+            "categories": [
+              {
+                "id": 30,
+                "name": "Tareas",
+                "percentage": 40,
+                "grade": 9.0,
+                "grade_letter": null,
+                "activities": [
+                  {"id": 100, "name": "Tarea 1 - Ecuaciones", "grade": 9.0, "grade_letter": null},
+                  {"id": 101, "name": "Tarea 2 - Inecuaciones", "grade": 9.0, "grade_letter": null}
+                ]
+              },
+              {
+                "id": 31,
+                "name": "Lecciones",
+                "percentage": 60,
+                "grade": 8.2,
+                "grade_letter": null,
+                "activities": [
+                  {"id": 102, "name": "Lección 1", "grade": 8.2, "grade_letter": null}
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

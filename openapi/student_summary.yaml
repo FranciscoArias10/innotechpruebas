@@ -1,0 +1,128 @@
+openapi: 3.0.3
+info:
+  title: SIGE-UBE — Resumen Académico del Estudiante
+  version: 1.0.0
+  description: |
+    Endpoint de métricas consolidadas del estudiante para dashboards móviles.
+
+    **El sobre de respuesta es siempre el mismo:**
+    `{"isSuccess": true, "message": "texto", "data": {}}`
+
+servers:
+  - url: https://sige.innotech-solutions.com.ec/api/v1.0.0
+    description: Staging (datos sintéticos)
+  - url: http://localhost:8000/api/v1.0.0
+    description: Servidor Local
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    XPeriodIDHeader:
+      name: X-Period-ID
+      in: header
+      required: true
+      description: ID del periodo lectivo (tabla `periodo`, NO `periodolectivo`).
+      schema:
+        type: integer
+        example: 6
+
+  schemas:
+    Sobre:
+      type: object
+      required: [isSuccess, message]
+      properties:
+        isSuccess: { type: boolean, example: true }
+        message: { type: string, nullable: true, example: "Consulta exitosa" }
+
+    MatriculaInfo:
+      type: object
+      required: [id, level, level_alias, parallel]
+      properties:
+        id: { type: integer, example: 9876 }
+        level: { type: string, example: "OCTAVO AÑO DE EDUCACIÓN GENERAL BÁSICA" }
+        level_alias: { type: string, example: "8vo EGB" }
+        parallel: { type: string, example: "A" }
+
+    PeriodoDetalle:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: integer, example: 6 }
+        name: { type: string, example: "PERIODO LECTIVO 2024 - 2025" }
+
+    StudentSummaryData:
+      type: object
+      required: [total_subjects, attendance_percentage, pending_activities, enrollment, period]
+      properties:
+        total_subjects: { type: integer, example: 8, description: "Número de materias activas (no retiradas)" }
+        attendance_percentage: { type: number, format: float, example: 95.5, description: "Porcentaje de asistencia general (0-100)" }
+        pending_activities: { type: integer, example: 3, description: "Total de actividades con entrega pendiente" }
+        enrollment: { $ref: '#/components/schemas/MatriculaInfo' }
+        period: { $ref: '#/components/schemas/PeriodoDetalle' }
+
+    RespuestaStudentSummary:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          required: [data]
+          properties:
+            data: { $ref: '#/components/schemas/StudentSummaryData' }
+
+    RespuestaError:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          properties:
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items: { type: string }
+
+paths:
+  /student/summary/:
+    get:
+      summary: Métricas consolidadas del estudiante
+      description: |
+        Retorna número de materias, porcentaje de asistencia general, tareas pendientes y datos de matrícula.
+      operationId: obtenerResumenEstudiante
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/XPeriodIDHeader'
+      responses:
+        '200':
+          description: Resumen obtenido exitosamente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaStudentSummary' }
+        '400':
+          description: Header X-Period-ID faltante o inválido
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '401':
+          description: No autenticado o token JWT expirado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '403':
+          description: Usuario sin perfil de estudiante o sin acceso al periodo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '404':
+          description: No existe matrícula activa en el periodo solicitado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '500':
+          description: Error interno del servidor
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
