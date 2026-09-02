@@ -1,0 +1,30 @@
+{
+  "subjects": [
+    {
+      "cronograma_id": 10,
+      "name": "LENGUA Y LITERATURA",
+      "by_hours": {
+        "attended": 45, "justified": 3, "pending": 0,
+        "absent": 2, "total": 50, "percentage": 96.0
+      },
+      "by_days": {
+        "attended": 30, "justified": 2, "pending": 0,
+        "absent": 1, "total": 33, "percentage": 96.9
+      },
+      "status": "excelente"
+    },
+    {
+      "cronograma_id": 11,
+      "name": "MATEMÁTICA",
+      "by_hours": {
+        "attended": 38, "justified": 1, "pending": 2,
+        "absent": 9, "total": 50, "percentage": 78.0
+      },
+      "by_days": {
+        "attended": 26, "justified": 1, "pending": 1,
+        "absent": 5, "total": 33, "percentage": 81.8
+      },
+      "status": "riesgo"
+    }
+  ]
+}

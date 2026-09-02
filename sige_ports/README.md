@@ -25,5 +25,8 @@ datos = portal.resumen_estudiante(persona_id=7, periodo_id=6)
    alcanza, el problema es el contrato: pídanlo.
 2. **No agreguen puertos por su cuenta.** Un puerto es una promesa que alguien
    tiene que cumplir del otro lado.
-3. **Prueben también el camino de error.** `representa_a` siempre devuelve
+3. **Si agregan un puerto, agreguen su entrada en `tests_andamio/test_puertos.py`.**
+   Esa prueba verifica que todo puerto responda y esté documentado; es lo que
+   evita descubrir un fixture faltante tres semanas después.
+4. **Prueben también el camino de error.** `representa_a` siempre devuelve
    `True` aquí; su prueba del caso `False` va con `mock.patch`.

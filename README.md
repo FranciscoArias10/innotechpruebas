@@ -46,7 +46,7 @@ python manage.py migrate
 python manage.py test
 ```
 
-Si las 5 pruebas pasan, el entorno está listo. Levanten el servidor con
+Si las 8 pruebas pasan, el entorno está listo. Levanten el servidor con
 `python manage.py runserver` y el endpoint de ejemplo queda en
 `http://127.0.0.1:8000/api/v1.0.0/movil/device/register/`.
 
@@ -56,6 +56,7 @@ Si las 5 pruebas pasan, el entorno está listo. Levanten el servidor con
 |---|---|---|
 | `app/` | El código de ustedes: modelos, vistas, serializers, urls, pruebas | **Sí** |
 | `sige_ports/` | Dobles de las piezas del sistema real | No — allá existe la versión de verdad |
+| `tests_andamio/` | Prueba que los puertos respondan y estén documentados | No |
 | `proyecto/` | Arnés mínimo de Django para poder correr | No |
 | `openapi/` | Los contratos de la API | Se publican, no se integran |
 | `fixtures/` | Respuestas de ejemplo generadas del sistema | No |
