@@ -1,0 +1,13 @@
+{
+  "name": "sige-ube-api-pasantes",
+  "version": "1.0.0",
+  "description": "Servidor simulado (mock) para la API móvil SIGE-UBE usando Prism y OpenAPI 3.0",
+  "scripts": {
+    "bundle": "./venv/bin/python scripts/bundle_openapi.py",
+    "mock": "./venv/bin/python scripts/bundle_openapi.py && npx @stoplight/prism-cli mock openapi/openapi.yaml -p 4010 -h 127.0.0.1",
+    "mock:dynamic": "./venv/bin/python scripts/bundle_openapi.py && npx @stoplight/prism-cli mock openapi/openapi.yaml -p 4010 -h 127.0.0.1 --dynamic"
+  },
+  "devDependencies": {
+    "@stoplight/prism-cli": "^5.12.0"
+  }
+}

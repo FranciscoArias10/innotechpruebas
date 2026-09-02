@@ -50,6 +50,15 @@ Si las 8 pruebas pasan, el entorno está listo. Levanten el servidor con
 `python manage.py runserver` y el endpoint de ejemplo queda en
 `http://127.0.0.1:8000/api/v1.0.0/movil/device/register/`.
 
+### Servidor Simulado (Mock)
+
+Para levantar un servidor simulado que sirva las 12 rutas OpenAPI con respuestas de ejemplo:
+
+```bash
+npm run mock
+```
+
+El servidor quedará escuchando en `http://127.0.0.1:4010`.
 ## Qué hay aquí
 
 | Carpeta | Qué es | ¿Se integra al sistema? |

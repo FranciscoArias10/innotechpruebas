@@ -1,0 +1,331 @@
+openapi: 3.0.3
+info:
+  title: SIGE-UBE — API de Autenticación
+  version: 1.0.0
+  description: |
+    Endpoints de autenticación y gestión de usuarios (JWT).
+
+    **El sobre de respuesta es siempre el mismo:**
+
+    ```json
+    {"isSuccess": true, "message": "texto", "data": {}}
+    ```
+
+    El campo es `isSuccess`, no `success`. Varias especificaciones antiguas del
+    sistema decían `success` y estaban equivocadas.
+
+servers:
+  - url: https://sige.innotech-solutions.com.ec/api/v1.0.0
+    description: Staging (datos sintéticos)
+  - url: http://localhost:8000/api/v1.0.0
+    description: Servidor Local
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Sobre:
+      type: object
+      required: [isSuccess, message]
+      properties:
+        isSuccess: { type: boolean, example: true }
+        message: { type: string, nullable: true, example: "Operación realizada con éxito" }
+
+    UsuarioInfo:
+      type: object
+      required: [id, username, email, first_name, last_name, is_staff, is_superuser, is_active, date_joined]
+      properties:
+        id: { type: integer, example: 123 }
+        username: { type: string, example: "jperez" }
+        email: { type: string, example: "jperez@example.com" }
+        first_name: { type: string, example: "Juan" }
+        last_name: { type: string, example: "Pérez" }
+        is_staff: { type: boolean, example: false }
+        is_superuser: { type: boolean, example: false }
+        is_active: { type: boolean, example: true }
+        date_joined: { type: string, format: date-time, example: "2024-01-15T10:30:00Z" }
+
+    PeriodoInfo:
+      type: object
+      required: [id, name, is_active]
+      properties:
+        id: { type: integer, example: 5 }
+        name: { type: string, example: "2024-2025" }
+        is_active: { type: boolean, example: true }
+
+    SignInData:
+      type: object
+      required: [access, refresh, user, profiles, password_change_required, periods, active_period_id]
+      properties:
+        access: { type: string, example: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..." }
+        refresh: { type: string, example: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..." }
+        user: { $ref: '#/components/schemas/UsuarioInfo' }
+        profiles:
+          type: array
+          items:
+            type: string
+            enum: [student, teacher, representative, admin]
+          example: ["student", "representative"]
+        password_change_required: { type: boolean, example: false }
+        periods:
+          type: array
+          items: { $ref: '#/components/schemas/PeriodoInfo' }
+        active_period_id: { type: integer, example: 5 }
+
+    RefreshData:
+      type: object
+      required: [access, refresh]
+      properties:
+        access: { type: string, example: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..." }
+        refresh: { type: string, example: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..." }
+
+    RecoverPasswordData:
+      type: object
+      required: [emails]
+      properties:
+        emails: { type: string, example: "jperez@gmail.com, jperez@institution.edu.ec" }
+
+    RecoverUsernameData:
+      type: object
+      required: [username, full_name]
+      properties:
+        username: { type: string, example: "jperez" }
+        full_name: { type: string, example: "Juan Carlos Pérez López" }
+
+    RespuestaSignIn:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          required: [data]
+          properties:
+            data: { $ref: '#/components/schemas/SignInData' }
+
+    RespuestaRefresh:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          required: [data]
+          properties:
+            data: { $ref: '#/components/schemas/RefreshData' }
+
+    RespuestaSignOut:
+      $ref: '#/components/schemas/Sobre'
+
+    RespuestaRecoverPassword:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/RecoverPasswordData' }
+
+    RespuestaRecoverUsername:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          required: [data]
+          properties:
+            data: { $ref: '#/components/schemas/RecoverUsernameData' }
+
+    RespuestaChangePassword:
+      $ref: '#/components/schemas/Sobre'
+
+    RespuestaError:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          properties:
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items: { type: string }
+
+paths:
+  /auth/sign-in/:
+    post:
+      summary: Autentica un usuario y devuelve tokens JWT
+      description: |
+        Autentica usuario por `username` (o correo) y `password`.
+        Retorna tokens JWT `access` y `refresh`, información del usuario, roles, periodos y flag de cambio obligatorio de clave.
+      operationId: autenticarUsuario
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string, example: "jperez", description: "Nombre de usuario o dirección de correo electrónico" }
+                password: { type: string, example: "MiClave123", description: "Contraseña del usuario" }
+      responses:
+        '200':
+          description: Login exitoso
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaSignIn' }
+        '401':
+          description: Credenciales inválidas, usuario no encontrado o inactivo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+
+  /auth/refresh/:
+    post:
+      summary: Obtiene un nuevo access token usando el refresh token
+      description: |
+        Al usar este endpoint, el refresh token anterior se invalida (lista negra) y se entrega un nuevo par de tokens.
+      operationId: renovarToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh]
+              properties:
+                refresh: { type: string, description: "Refresh token JWT válido" }
+      responses:
+        '200':
+          description: Tokens renovados exitosamente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaRefresh' }
+        '401':
+          description: Token inválido o expirado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+
+  /auth/sign-out/:
+    post:
+      summary: Cierra la sesión e invalida el refresh token
+      description: |
+        Requiere autenticación mediante el access token en `Authorization: Bearer <token>`.
+        Invalida (añade a la lista negra) el refresh token enviado en el cuerpo.
+      operationId: cerrarSesion
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh]
+              properties:
+                refresh: { type: string, description: "Refresh token a invalidar" }
+      responses:
+        '205':
+          description: Sesión cerrada exitosamente (Reset Content)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaSignOut' }
+        '400':
+          description: Solicitud inválida (falta el refresh token)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '401':
+          description: No autenticado o token expirado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+
+  /auth/recover-password/:
+    post:
+      summary: Recuperación/reset de contraseña
+      description: |
+        Resetea la contraseña a una clave aleatoria segura y la envía por correo electrónico a la persona asociada al usuario.
+      operationId: recuperarPassword
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username]
+              properties:
+                username: { type: string, example: "jperez", description: "Nombre de usuario" }
+      responses:
+        '200':
+          description: Nueva contraseña enviada por correo electrónico
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaRecoverPassword' }
+        '400':
+          description: Usuario no existe, persona no existe o no tiene correos registrados
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+
+  /auth/recover-username/:
+    post:
+      summary: Recuperación de nombre de usuario por cédula
+      description: |
+        Obtiene el nombre de usuario y el nombre completo dada la cédula de la persona.
+      operationId: recuperarUsername
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cedula]
+              properties:
+                cedula: { type: string, example: "1234567890", description: "Número de cédula de la persona" }
+      responses:
+        '200':
+          description: Usuario encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaRecoverUsername' }
+        '400':
+          description: Persona no existe o cédula no encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+
+  /auth/change-password/:
+    post:
+      summary: Cambio de contraseña para usuario autenticado
+      description: |
+        Permite a un usuario autenticado modificar su contraseña actual. Revisa políticas de seguridad (mínimo 8 caracteres, mayúsculas, minúsculas, números, sin espacios, diferente a cédula y clave actual).
+      operationId: cambiarPassword
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [old_password, new_password, repeat_password]
+              properties:
+                old_password: { type: string, example: "MiClaveAnterior123", description: "Contraseña actual" }
+                new_password: { type: string, example: "MiNuevaClave456", description: "Nueva contraseña" }
+                repeat_password: { type: string, example: "MiNuevaClave456", description: "Confirmación de la nueva contraseña" }
+      responses:
+        '200':
+          description: Contraseña actualizada correctamente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaChangePassword' }
+        '400':
+          description: Clave insegura, claves no coinciden, o datos inválidos
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '401':
+          description: No autenticado o token expirado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
