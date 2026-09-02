@@ -90,3 +90,32 @@ class PreferenciaNotificacion(ModeloBase):
         verbose_name = u'Preferencia de notificación'
         verbose_name_plural = u'Preferencias de notificación'
 
+
+class FeedbackMovil(ModeloBase):
+    """Sugerencias, quejas o reportes de error enviados desde la app."""
+
+    SUGERENCIA = 'SUGERENCIA'
+    QUEJA = 'QUEJA'
+    ERROR = 'ERROR'
+    TIPO_OPCIONES = (
+        (SUGERENCIA, u'Sugerencia'),
+        (QUEJA, u'Queja'),
+        (ERROR, u'Error'),
+    )
+
+    usuario = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='feedbacks', verbose_name=u'Usuario')
+    tipo = models.CharField(
+        max_length=20, choices=TIPO_OPCIONES, default=SUGERENCIA, verbose_name=u'Tipo de feedback')
+    mensaje = models.TextField(verbose_name=u'Mensaje')
+
+    def __str__(self):
+        fecha = self.fecha_creacion.strftime('%Y-%m-%d %H:%M') if self.fecha_creacion else 'Sin fecha'
+        return u'[%s] %s - %s' % (self.tipo, self.usuario, fecha)
+
+    class Meta:
+        verbose_name = u'Feedback móvil'
+        verbose_name_plural = u'Feedbacks móviles'
+        ordering = ['-fecha_creacion']
+

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from rest_framework.throttling import AnonRateThrottle
+from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 
 class AppVersionRateThrottle(AnonRateThrottle):
     """
@@ -8,3 +8,11 @@ class AppVersionRateThrottle(AnonRateThrottle):
     Se define el rate duro aquí para no contaminar settings.py del arnés.
     """
     rate = '10/minute'
+
+
+class FeedbackRateThrottle(UserRateThrottle):
+    """
+    Límite de tasa para el endpoint de envío de feedback.
+    Evita abuso y spam de comentarios a 2 por hora por usuario.
+    """
+    rate = '2/hour'

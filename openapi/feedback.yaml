@@ -1,0 +1,102 @@
+openapi: 3.0.3
+info:
+  title: SIGE-UBE — API móvil (Feedback)
+  version: 1.0.0
+  description: |
+    Endpoint para enviar sugerencias, quejas o reportar errores desde la aplicación móvil.
+    Incluye un límite de tasa muy estricto para evitar abuso.
+
+servers:
+  - url: https://sige.innotech-solutions.com.ec/api/v1.0.0
+    description: Staging (datos sintéticos)
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Sobre:
+      type: object
+      required: [isSuccess, message]
+      properties:
+        isSuccess: { type: boolean }
+        message:   { type: string, nullable: true }
+
+    FeedbackMovilCreate:
+      type: object
+      required: [tipo, mensaje]
+      properties:
+        tipo:
+          type: string
+          enum: [SUGERENCIA, QUEJA, ERROR]
+          description: Categoría del feedback
+          example: SUGERENCIA
+        mensaje:
+          type: string
+          description: El cuerpo del comentario o problema a reportar.
+          example: "Me gustaría tener la opción de ver el horario en modo oscuro."
+
+    RespuestaExito:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          properties:
+            data:
+              type: object
+              description: Opcional, puede estar vacío o devolver detalles básicos.
+
+    RespuestaError:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          properties:
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items: { type: string }
+
+paths:
+  /movil/feedback/:
+    post:
+      summary: Enviar feedback o reporte desde la app.
+      description: |
+        Crea un nuevo registro de feedback asociado al usuario autenticado. 
+        Este endpoint cuenta con un límite de tasa estricto (ej. 2 peticiones por hora).
+      operationId: enviarFeedback
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeedbackMovilCreate'
+      responses:
+        '201':
+          description: Feedback enviado con éxito.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaExito'
+        '400':
+          description: Faltan datos requeridos o son inválidos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '401':
+          description: Token no provisto o expirado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '429':
+          description: Límite de peticiones excedido (Throttling).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'

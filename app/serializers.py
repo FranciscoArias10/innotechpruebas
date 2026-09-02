@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from rest_framework import serializers
 
-from app.models import DispositivoRegistrado, VersionAppMovil, PreferenciaNotificacion
+from app.models import DispositivoRegistrado, VersionAppMovil, PreferenciaNotificacion, FeedbackMovil
 
 
 class DispositivoRegistroSerializer(serializers.Serializer):
@@ -50,3 +50,10 @@ class PreferenciaNotificacionSerializer(serializers.ModelSerializer):
         model = PreferenciaNotificacion
         fields = ('push_enabled', 'grades', 'attendance', 'events', 'announcements', 'tasks')
 
+
+class FeedbackMovilSerializer(serializers.ModelSerializer):
+    """Contrato de entrada para POST /movil/feedback/."""
+
+    class Meta:
+        model = FeedbackMovil
+        fields = ('tipo', 'mensaje')

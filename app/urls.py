@@ -7,10 +7,11 @@ este archivo. Aqui lo pone proyecto/urls.py; alla, api/v1_0_0/urls.py.
 """
 from django.urls import path
 
-from app.views import DeviceRegisterView, AppVersionView, NotificationPreferencesView
+from app.views import DeviceRegisterView, AppVersionView, NotificationPreferencesView, FeedbackView
 
 urlpatterns = [
     path('device/register/', DeviceRegisterView.as_view(), name='movil-device-register'),
     path('app/version/', AppVersionView.as_view(), name='movil-app-version'),
     path('notifications/preferences/', NotificationPreferencesView.as_view(), name='movil-notification-preferences'),
+    path('feedback/', FeedbackView.as_view(), name='movil-feedback'),
 ]

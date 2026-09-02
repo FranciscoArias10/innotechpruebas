@@ -19,8 +19,9 @@ from app.serializers import (
     DispositivoSalidaSerializer,
     VersionAppMovilSerializer,
     PreferenciaNotificacionSerializer,
+    FeedbackMovilSerializer,
 )
-from app.throttling import AppVersionRateThrottle
+from app.throttling import AppVersionRateThrottle, FeedbackRateThrottle
 from sige_ports import RespuestaApi
 
 
@@ -154,5 +155,41 @@ class NotificationPreferencesView(APIView):
         respuesta.set_message('Preferencias de notificación actualizadas con éxito.')
         respuesta.set_data(serializer.data)
         respuesta.set_status(status.HTTP_200_OK)
+        return respuesta.to_dict()
+
+
+class FeedbackView(APIView):
+    """
+    POST /api/v1.0.0/movil/feedback/
+
+    Recibe comentarios, quejas o sugerencias de los usuarios.
+    Protegido con un rate limit estricto para evitar spam.
+    """
+    throttle_classes = [FeedbackRateThrottle]
+
+    def post(self, request):
+        respuesta = RespuestaApi()
+
+        serializer = FeedbackMovilSerializer(data=request.data)
+        if not serializer.is_valid():
+            respuesta.set_success(False)
+            respuesta.set_message('Los datos enviados no son válidos.')
+            respuesta.set_errors(serializer.errors)
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+            return respuesta.to_dict()
+
+        try:
+            with transaction.atomic():
+                serializer.save(usuario=request.user)
+        except Exception:
+            respuesta.set_success(False)
+            respuesta.set_message('No se pudo enviar el feedback.')
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return respuesta.to_dict()
+
+        respuesta.set_success(True)
+        respuesta.set_message('Feedback enviado con éxito.')
+        respuesta.set_data(serializer.data)
+        respuesta.set_status(status.HTTP_201_CREATED)
         return respuesta.to_dict()
 
