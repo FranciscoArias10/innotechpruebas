@@ -56,6 +56,11 @@ Schemathesis contra staging, corriendo en cada push. Ver `contrato/README.md`.
 **Listo cuando:** la CI falla si una respuesta deja de cumplir su contrato.
 
 ### T6 · Informe de desfase · 8–16 h
+
+Ya hay uno abierto que sirve de punto de partida y de ejemplo del formato:
+[H1 — cinco endpoints devuelven la respuesta sin datos](hallazgos/H01-set-data-descarta-listas.md).
+Cuando las pruebas de T5 fallen contra esos cinco, no es su código: es ese
+defecto. **No ajusten los fixtures para que pasen.**
 Correr T5 contra staging y documentar cada diferencia.
 
 **Listo cuando:** hay una tabla de hallazgos priorizada. Esta es la entrega más

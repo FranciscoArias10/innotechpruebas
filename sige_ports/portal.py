@@ -56,6 +56,11 @@ def representados_de(persona_id):
          'nivel': str, 'paralelo': str}
 
     Lista vacia si no representa a nadie.
+
+    ATENCION: el endpoint real (`GET /representative/wards/`) hoy NO devuelve
+    esta forma: por el defecto descrito en docs/hallazgos/H01, la respuesta sale
+    sin la clave `data`. Este puerto describe el CONTRATO, que es lo correcto.
+    Cuando la prueba de contrato falle contra staging, el defecto es del codigo.
     """
     return _cargar('representados.json')
 
