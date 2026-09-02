@@ -96,12 +96,15 @@ Quien opere el sistema necesita ver esto sin entrar a la base.
 
 Aquí ya usan datos del sistema real, siempre a través de `sige_ports.portal`.
 
-### T11 · `GET /representative/students/<id>/grades/` · 10–14 h
+### T11 · `GET /representative/students/<id>/grades/` · RESUELTA
+→ [docs/hallazgos/T11-notas-estudiante.md](hallazgos/T11-notas-estudiante.md)
+
 Notas de un estudiante representado. El puerto entrega los datos; ustedes
 resuelven la forma, la paginación y los errores.
 
 **Ojo con el 403:** verificar con `portal.representa_a()` que sea suyo. La prueba
 del caso denegado es obligatoria y se hace con `mock.patch`.
+
 
 ### T12 · `GET /representative/students/<id>/attendance/` · 8–12 h
 ### T13 · `GET /representative/students/<id>/schedule/` · 8–12 h

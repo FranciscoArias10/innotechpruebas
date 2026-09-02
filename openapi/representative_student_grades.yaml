@@ -1,0 +1,204 @@
+openapi: 3.0.3
+info:
+  title: SIGE-UBE — Calificaciones de Estudiante Representado
+  version: 1.0.0
+  description: |
+    Endpoint para que un representante obtenga las calificaciones de un estudiante a su cargo.
+
+    **El sobre de respuesta es siempre el mismo:**
+    `{"isSuccess": true, "message": "Calificaciones recuperadas con éxito.", "data": {}}`
+
+servers:
+  - url: https://sige.innotech-solutions.com.ec/api/v1.0.0
+    description: Staging (datos sintéticos)
+  - url: http://localhost:8000/api/v1.0.0
+    description: Servidor Local
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    XPeriodIDHeader:
+      name: X-Period-ID
+      in: header
+      required: true
+      description: ID del periodo académico.
+      schema:
+        type: integer
+        example: 6
+
+    StudentIDPath:
+      name: student_id
+      in: path
+      required: true
+      description: ID del estudiante representado.
+      schema:
+        type: integer
+        example: 4412
+
+    MateriaAsignadaIDQuery:
+      name: materia_asignada_id
+      in: query
+      required: true
+      description: ID de la materia asignada al estudiante.
+      schema:
+        type: integer
+        example: 123
+
+  schemas:
+    Sobre:
+      type: object
+      required: [isSuccess, message]
+      properties:
+        isSuccess: { type: boolean, example: true }
+        message: { type: string, nullable: true, example: "Notas recuperadas con éxito." }
+
+    MateriaDetalle:
+      type: object
+      required: [id, name, level, parallel, start_date, end_date, total_weeks, pending_activities]
+      properties:
+        id: { type: integer, example: 123 }
+        name: { type: string, example: "MATEMÁTICA" }
+        level: { type: string, example: "1ro BGU" }
+        parallel: { type: string, example: "A" }
+        start_date: { type: string, format: date, nullable: true, example: "2025-09-01" }
+        end_date: { type: string, format: date, nullable: true, example: "2026-06-30" }
+        total_weeks: { type: integer, example: 40 }
+        pending_activities: { type: integer, example: 5 }
+
+    ActividadDetalle:
+      type: object
+      required: [id, name, grade, grade_letter]
+      properties:
+        id: { type: integer, example: 100 }
+        name: { type: string, example: "Tarea 1 - Ecuaciones" }
+        grade: { type: number, format: float, nullable: true, example: 9.0 }
+        grade_letter: { type: string, nullable: true, example: null }
+
+    CategoriaDetalle:
+      type: object
+      required: [id, name, percentage, grade, grade_letter, activities]
+      properties:
+        id: { type: integer, example: 30 }
+        name: { type: string, example: "Tareas" }
+        percentage: { type: number, format: float, example: 40 }
+        grade: { type: number, format: float, nullable: true, example: 9.0 }
+        grade_letter: { type: string, nullable: true, example: null }
+        activities:
+          type: array
+          items: { $ref: '#/components/schemas/ActividadDetalle' }
+
+    ParcialDetalle:
+      type: object
+      required: [id, name, percentage, grade, grade_letter, categories]
+      properties:
+        id: { type: integer, example: 20 }
+        name: { type: string, example: "Parcial 1" }
+        percentage: { type: number, format: float, example: 33.33 }
+        grade: { type: number, format: float, nullable: true, example: 8.5 }
+        grade_letter: { type: string, nullable: true, example: null }
+        categories:
+          type: array
+          items: { $ref: '#/components/schemas/CategoriaDetalle' }
+
+    ItemEvaluativo:
+      type: object
+      required: [id, name, alias, max_score, total_percentage, grade, grade_letter, grading_books]
+      properties:
+        id: { type: integer, example: 10 }
+        name: { type: string, example: "1er Quimestre" }
+        alias: { type: string, example: "Q1" }
+        max_score: { type: number, format: float, example: 10 }
+        total_percentage: { type: number, format: float, example: 50 }
+        grade: { type: number, format: float, nullable: true, example: 8.75 }
+        grade_letter: { type: string, nullable: true, example: null }
+        grading_books:
+          type: array
+          items: { $ref: '#/components/schemas/ParcialDetalle' }
+
+    ModeloEvaluativoDetalle:
+      type: object
+      required: [id, name, is_quantitative, items]
+      properties:
+        id: { type: integer, example: 1 }
+        name: { type: string, example: "Modelo Evaluativo Bachillerato" }
+        is_quantitative: { type: boolean, example: true }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ItemEvaluativo' }
+
+    NotasEstudianteData:
+      type: object
+      required: [subject, evaluation_model]
+      properties:
+        subject: { $ref: '#/components/schemas/MateriaDetalle' }
+        evaluation_model: { $ref: '#/components/schemas/ModeloEvaluativoDetalle' }
+
+    RespuestaNotasEstudiante:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          required: [data]
+          properties:
+            data: { $ref: '#/components/schemas/NotasEstudianteData' }
+
+    RespuestaError:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          properties:
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items: { type: string }
+
+paths:
+  /movil/representative/students/{student_id}/grades/:
+    get:
+      summary: Calificaciones de un estudiante representado
+      description: |
+        Devuelve el libro de calificaciones de un estudiante en una materia específica.
+        Requiere que el usuario autenticado sea representante del estudiante indicado.
+      operationId: obtenerNotasEstudianteRepresentado
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StudentIDPath'
+        - $ref: '#/components/parameters/XPeriodIDHeader'
+        - $ref: '#/components/parameters/MateriaAsignadaIDQuery'
+      responses:
+        '200':
+          description: Notas obtenidas exitosamente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaNotasEstudiante' }
+        '400':
+          description: Header X-Period-ID o parámetro materia_asignada_id faltante o inválido
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '401':
+          description: No autenticado o token expirado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '403':
+          description: El usuario autenticado no representa a este estudiante
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '404':
+          description: Materia asignada no encontrada para el estudiante
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '500':
+          description: Error del servidor
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }

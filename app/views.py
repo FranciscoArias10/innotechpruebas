@@ -22,7 +22,8 @@ from app.serializers import (
     FeedbackMovilSerializer,
 )
 from app.throttling import AppVersionRateThrottle, FeedbackRateThrottle
-from sige_ports import RespuestaApi
+from app.permissions import EsRepresentanteDelEstudiante
+from sige_ports import RespuestaApi, portal
 
 
 class DeviceRegisterView(APIView):
@@ -191,5 +192,75 @@ class FeedbackView(APIView):
         respuesta.set_message('Feedback enviado con éxito.')
         respuesta.set_data(serializer.data)
         respuesta.set_status(status.HTTP_201_CREATED)
+        return respuesta.to_dict()
+
+
+class RepresentativeStudentGradesView(APIView):
+    """
+    GET /api/v1.0.0/movil/representative/students/<int:student_id>/grades/
+
+    Devuelve el libro de calificaciones de un estudiante en una materia específica.
+    Verifica parentesco mediante portal.representa_a.
+    """
+    permission_classes = [IsAuthenticated, EsRepresentanteDelEstudiante]
+
+    def get(self, request, student_id):
+        respuesta = RespuestaApi()
+
+        periodo_hdr = request.headers.get('X-Period-ID') or request.META.get('HTTP_X_PERIOD_ID')
+        if not periodo_hdr:
+            respuesta.set_success(False)
+            respuesta.set_message('Header X-Period-ID es requerido.')
+            respuesta.set_errors({'X-Period-ID': ['Este header es obligatorio.']})
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+            return respuesta.to_dict()
+
+        try:
+            periodo_id = int(periodo_hdr)
+        except (ValueError, TypeError):
+            respuesta.set_success(False)
+            respuesta.set_message('Header X-Period-ID debe ser entero.')
+            respuesta.set_errors({'X-Period-ID': ['Formato de entero inválido.']})
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+            return respuesta.to_dict()
+
+        materia_param = request.query_params.get('materia_asignada_id')
+        if not materia_param:
+            respuesta.set_success(False)
+            respuesta.set_message('El parámetro materia_asignada_id es requerido.')
+            respuesta.set_errors({'materia_asignada_id': ['Este campo es obligatorio.']})
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+            return respuesta.to_dict()
+
+        try:
+            materia_asignada_id = int(materia_param)
+        except (ValueError, TypeError):
+            respuesta.set_success(False)
+            respuesta.set_message('El parámetro materia_asignada_id debe ser entero.')
+            respuesta.set_errors({'materia_asignada_id': ['Formato de entero inválido.']})
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+            return respuesta.to_dict()
+
+        try:
+            datos_notas = portal.notas_de_estudiante(
+                persona_id=student_id,
+                periodo_id=periodo_id,
+                materia_asignada_id=materia_asignada_id
+            )
+        except LookupError:
+            respuesta.set_success(False)
+            respuesta.set_message('Materia no encontrada o no pertenece al estudiante.')
+            respuesta.set_status(status.HTTP_404_NOT_FOUND)
+            return respuesta.to_dict()
+        except Exception:
+            respuesta.set_success(False)
+            respuesta.set_message('Error al obtener calificaciones.')
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return respuesta.to_dict()
+
+        respuesta.set_success(True)
+        respuesta.set_message('Notas recuperadas con éxito.')
+        respuesta.set_data(datos_notas)
+        respuesta.set_status(status.HTTP_200_OK)
         return respuesta.to_dict()
 
