@@ -59,6 +59,7 @@ npm run mock
 ```
 
 El servidor quedará escuchando en `http://127.0.0.1:4010`.
+
 ## Qué hay aquí
 
 | Carpeta | Qué es | ¿Se integra al sistema? |
