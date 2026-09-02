@@ -14,6 +14,7 @@ from app.views import (
     FeedbackView,
     RepresentativeStudentGradesView,
     RepresentativeStudentAttendanceView,
+    RepresentativeStudentScheduleView,
 )
 
 urlpatterns = [
@@ -23,5 +24,6 @@ urlpatterns = [
     path('feedback/', FeedbackView.as_view(), name='movil-feedback'),
     path('representative/students/<int:student_id>/grades/', RepresentativeStudentGradesView.as_view(), name='movil-representative-student-grades'),
     path('representative/students/<int:student_id>/attendance/', RepresentativeStudentAttendanceView.as_view(), name='movil-representative-student-attendance'),
+    path('representative/students/<int:student_id>/schedule/', RepresentativeStudentScheduleView.as_view(), name='movil-representative-student-schedule'),
 ]
 

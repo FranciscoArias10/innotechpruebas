@@ -1,0 +1,170 @@
+openapi: 3.0.3
+info:
+  title: SIGE-UBE — Horario de Estudiante Representado
+  version: 1.0.0
+  description: |
+    Endpoint para que un representante obtenga el horario semanal de un estudiante a su cargo.
+
+    **El sobre de respuesta es siempre el mismo:**
+    `{"isSuccess": true, "message": "Horario recuperado con éxito.", "data": {}}`
+
+servers:
+  - url: https://sige.innotech-solutions.com.ec/api/v1.0.0
+    description: Staging (datos sintéticos)
+  - url: http://localhost:8000/api/v1.0.0
+    description: Servidor Local
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    XPeriodIDHeader:
+      name: X-Period-ID
+      in: header
+      required: true
+      description: ID del periodo académico.
+      schema:
+        type: integer
+        example: 6
+
+    StudentIDPath:
+      name: student_id
+      in: path
+      required: true
+      description: ID del estudiante representado.
+      schema:
+        type: integer
+        example: 4412
+
+  schemas:
+    Sobre:
+      type: object
+      required: [isSuccess, message]
+      properties:
+        isSuccess: { type: boolean, example: true }
+        message: { type: string, nullable: true, example: "Horario recuperado con éxito." }
+
+    ClaseHorario:
+      type: object
+      required: [nombre, paralelo, aula, profesor, fecha_inicio, fecha_fin, color]
+      properties:
+        nombre: { type: string, example: "MATEMÁTICA" }
+        paralelo: { type: string, example: "A" }
+        aula: { type: string, example: "Aula 101" }
+        profesor: { type: string, example: "Juan Perez" }
+        fecha_inicio: { type: string, format: date, example: "2025-09-01" }
+        fecha_fin: { type: string, format: date, example: "2026-06-30" }
+        color: { type: string, example: "#FF5733" }
+
+    DiaVisible:
+      type: object
+      required: [indice, nombre, clases]
+      properties:
+        indice: { type: integer, example: 1 }
+        nombre: { type: string, example: "Lunes" }
+        clases:
+          type: array
+          items:
+            # Según doc de portal, las clases en dias_visibles siempre están vacías
+            type: object
+
+    DiaClase:
+      type: object
+      required: [indice, nombre, clases]
+      properties:
+        indice: { type: integer, example: 1 }
+        nombre: { type: string, example: "Lunes" }
+        clases:
+          type: array
+          items: { $ref: '#/components/schemas/ClaseHorario' }
+
+    TurnoHorario:
+      type: object
+      required: [id, nombre, nombre_corto, aplica_asistencia, dias]
+      properties:
+        id: { type: integer, example: 1 }
+        nombre: { type: string, example: "Matutino" }
+        nombre_corto: { type: string, example: "Mat" }
+        aplica_asistencia: { type: boolean, example: true }
+        dias:
+          type: array
+          items: { $ref: '#/components/schemas/DiaClase' }
+
+    HorarioEstudianteData:
+      type: object
+      required: [turnos, dias_visibles]
+      properties:
+        turnos:
+          type: array
+          items: { $ref: '#/components/schemas/TurnoHorario' }
+        dias_visibles:
+          type: array
+          items: { $ref: '#/components/schemas/DiaVisible' }
+
+    RespuestaHorarioEstudiante:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          required: [data]
+          properties:
+            data: { $ref: '#/components/schemas/HorarioEstudianteData' }
+
+    RespuestaError:
+      allOf:
+        - $ref: '#/components/schemas/Sobre'
+        - type: object
+          properties:
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items: { type: string }
+
+paths:
+  /movil/representative/students/{student_id}/schedule/:
+    get:
+      summary: Horario de un estudiante representado
+      description: |
+        Devuelve el horario semanal de clases de un estudiante.
+        Requiere que el usuario autenticado sea representante del estudiante indicado.
+      operationId: obtenerHorarioEstudianteRepresentado
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StudentIDPath'
+        - $ref: '#/components/parameters/XPeriodIDHeader'
+      responses:
+        '200':
+          description: Horario obtenido exitosamente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaHorarioEstudiante' }
+        '400':
+          description: Header X-Period-ID faltante o inválido
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '401':
+          description: No autenticado o token expirado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '403':
+          description: El usuario autenticado no representa a este estudiante
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '404':
+          description: Horario no encontrado para el estudiante
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
+        '500':
+          description: Error del servidor
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RespuestaError' }
