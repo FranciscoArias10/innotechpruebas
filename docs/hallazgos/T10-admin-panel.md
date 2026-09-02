@@ -4,7 +4,7 @@
 |---|---|
 | **Estado** | Entregado |
 | **Tiempo** | ~6 h |
-| **Rama** | `main` |
+| **Rama** | `T10-admin-panel` |
 | **Material** | `app/admin.py`, `app/tests/test_admin.py` |
 
 ## Qué se pedía
