@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from rest_framework import serializers
 
-from app.models import DispositivoRegistrado
+from app.models import DispositivoRegistrado, VersionAppMovil
 
 
 class DispositivoRegistroSerializer(serializers.Serializer):
@@ -26,3 +26,11 @@ class DispositivoSalidaSerializer(serializers.ModelSerializer):
     class Meta:
         model = DispositivoRegistrado
         fields = ('id', 'plataforma', 'app_version', 'modelo_dispositivo', 'activo')
+
+
+class VersionAppMovilSerializer(serializers.ModelSerializer):
+    """Contrato de salida para /movil/app/version/"""
+
+    class Meta:
+        model = VersionAppMovil  # Need to import VersionAppMovil at the top
+        fields = ('plataforma', 'version_minima', 'version_actual', 'forzar_actualizacion')

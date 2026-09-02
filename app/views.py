@@ -13,8 +13,9 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
-from app.models import DispositivoRegistrado
-from app.serializers import DispositivoRegistroSerializer, DispositivoSalidaSerializer
+from app.models import DispositivoRegistrado, VersionAppMovil
+from app.serializers import DispositivoRegistroSerializer, DispositivoSalidaSerializer, VersionAppMovilSerializer
+from app.throttling import AppVersionRateThrottle
 from sige_ports import RespuestaApi
 
 
@@ -63,4 +64,42 @@ class DeviceRegisterView(APIView):
         respuesta.set_message('Dispositivo registrado.' if creado else 'Dispositivo actualizado.')
         respuesta.set_data(DispositivoSalidaSerializer(dispositivo).data)
         respuesta.set_status(status.HTTP_201_CREATED if creado else status.HTTP_200_OK)
+        return respuesta.to_dict()
+
+
+class AppVersionView(APIView):
+    """
+    GET /api/v1.0.0/movil/app/version/
+
+    Devuelve la información de versión de la aplicación para una plataforma específica.
+    """
+    permission_classes = []
+    throttle_classes = [AppVersionRateThrottle]
+
+    def get(self, request):
+        respuesta = RespuestaApi()
+        plataforma_param = request.query_params.get('plataforma', 'android').lower()
+
+        if plataforma_param not in dict(VersionAppMovil.PLATAFORMA):
+            respuesta.set_success(False)
+            respuesta.set_message('Plataforma inválida. Use "android" o "ios".')
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+            return respuesta.to_dict()
+
+        version_info = VersionAppMovil.objects.filter(plataforma=plataforma_param, status=True).first()
+        
+        if not version_info:
+            # Si no hay registro para esa plataforma, devolvemos un valor por defecto.
+            # Idealmente debería estar configurado, pero no queremos romper la app.
+            version_info = VersionAppMovil(
+                plataforma=plataforma_param,
+                version_minima='1.0.0',
+                version_actual='1.0.0',
+                forzar_actualizacion=False
+            )
+
+        respuesta.set_success(True)
+        respuesta.set_message('Versión recuperada con éxito.')
+        respuesta.set_data(VersionAppMovilSerializer(version_info).data)
+        respuesta.set_status(status.HTTP_200_OK)
         return respuesta.to_dict()
