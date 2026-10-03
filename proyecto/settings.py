@@ -8,13 +8,24 @@ Este archivo NO viaja a sige-ube. Existe solo para que puedan correr
 La configuracion de REST_FRAMEWORK y SIMPLE_JWT si es un espejo fiel de la
 del sistema real: si algo funciona aqui, funciona alla.
 """
+import os
 from datetime import timedelta
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = 'arnes-de-desarrollo-no-usar-en-nada-real'
-DEBUG = True
+# Cargar variables de entorno desde .env si existe
+env_file = BASE_DIR / '.env'
+if env_file.exists():
+    with open(env_file, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                k, v = line.split('=', 1)
+                os.environ.setdefault(k.strip(), v.strip())
+
+SECRET_KEY = os.environ.get('SECRET_KEY', 'arnes-de-desarrollo-no-usar-en-nada-real')
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 ALLOWED_HOSTS = ['*']
 
 INSTALLED_APPS = [
@@ -53,12 +64,26 @@ TEMPLATES = [{
     ]},
 }]
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+db_engine = os.environ.get('DB_ENGINE', 'django.db.backends.postgresql')
+
+if 'sqlite3' in db_engine:
+    DATABASES = {
+        'default': {
+            'ENGINE': db_engine,
+            'NAME': BASE_DIR / os.environ.get('DB_NAME', 'db.sqlite3'),
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': db_engine,
+            'NAME': os.environ.get('DB_NAME', 'uniebec_dev'),
+            'USER': os.environ.get('DB_USER', 'fkhalil'),
+            'PASSWORD': os.environ.get('DB_PASSWORD', ''),
+            'HOST': os.environ.get('DB_HOST', 'localhost'),
+            'PORT': os.environ.get('DB_PORT', '5432'),
+        }
+    }
 
 LANGUAGE_CODE = 'es-ec'
 TIME_ZONE = 'America/Guayaquil'

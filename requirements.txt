@@ -10,3 +10,7 @@ djangorestframework_simplejwt==5.5.1
 # Pruebas de contrato. Fijen la version exacta la primera vez que instalen
 # (pip freeze | grep schemathesis) y anotenla aqui.
 schemathesis
+
+# Driver PostgreSQL
+psycopg2-binary==2.9.13
+

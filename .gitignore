@@ -8,3 +8,7 @@ venv/
 .vscode/
 .pytest_cache/
 .schemathesis/
+*.dump
+*.backup
+*.sql
+
