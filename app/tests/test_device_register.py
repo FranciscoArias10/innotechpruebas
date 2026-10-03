@@ -69,3 +69,22 @@ class DeviceRegisterTests(APITestCase):
         self.assertEqual(segunda.status_code, status.HTTP_200_OK)
         self.assertEqual(DispositivoRegistrado.objects.count(), 1)
         self.assertEqual(segunda.data['data']['app_version'], '1.1.0')
+
+    def test_reasignacion_token_desactiva_usuario_previo(self):
+        """Si un nuevo usuario registra un token que ya existía, el registro anterior se desactiva."""
+        otro_usuario = User.objects.create_user(username='otro_usuario', password='clave-de-prueba')
+        self.client.force_authenticate(user=self.usuario)
+        r1 = self.client.post(self.url, {'token': 'token-compartido', 'plataforma': 'android'}, format='json')
+        self.assertEqual(r1.status_code, status.HTTP_201_CREATED)
+
+        # Ahora el segundo usuario inicia sesión en el mismo dispositivo físico
+        self.client.force_authenticate(user=otro_usuario)
+        r2 = self.client.post(self.url, {'token': 'token-compartido', 'plataforma': 'android'}, format='json')
+        self.assertEqual(r2.status_code, status.HTTP_201_CREATED)
+
+        # Verificar que el registro del primer usuario quedó inactivo
+        disp_antiguo = DispositivoRegistrado.objects.get(usuario=self.usuario, token='token-compartido')
+        disp_nuevo = DispositivoRegistrado.objects.get(usuario=otro_usuario, token='token-compartido')
+        self.assertFalse(disp_antiguo.activo)
+        self.assertTrue(disp_nuevo.activo)
+

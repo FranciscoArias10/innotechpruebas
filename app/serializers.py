@@ -54,6 +54,18 @@ class PreferenciaNotificacionSerializer(serializers.ModelSerializer):
 class FeedbackMovilSerializer(serializers.ModelSerializer):
     """Contrato de entrada para POST /movil/feedback/."""
 
+    mensaje = serializers.CharField(
+        max_length=2000,
+        min_length=3,
+        allow_blank=False,
+        trim_whitespace=True,
+        error_messages={
+            'blank': 'El mensaje no puede estar vacío.',
+            'max_length': 'El mensaje no puede exceder los 2000 caracteres.',
+            'min_length': 'El mensaje debe tener al menos 3 caracteres.',
+        }
+    )
+
     class Meta:
         model = FeedbackMovil
         fields = ('tipo', 'mensaje')

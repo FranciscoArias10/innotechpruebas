@@ -63,6 +63,26 @@ class FeedbackTests(APITestCase):
         self.assertIn('tipo', response.data['errors'])
         self.assertIn('mensaje', response.data['errors'])
 
+    def test_post_mensaje_demasiado_largo(self):
+        """Mensaje con más de 2000 caracteres debe ser rechazado con 400."""
+        self.client.force_authenticate(user=self.usuario)
+        payload = {'tipo': 'SUGERENCIA', 'mensaje': 'a' * 2001}
+        response = self.client.post(self.url, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(response.data['isSuccess'])
+        self.assertIn('mensaje', response.data['errors'])
+
+    def test_post_mensaje_espacios_en_blanco(self):
+        """Mensaje compuesto solo por espacios debe ser rechazado con 400."""
+        self.client.force_authenticate(user=self.usuario)
+        payload = {'tipo': 'SUGERENCIA', 'mensaje': '     '}
+        response = self.client.post(self.url, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(response.data['isSuccess'])
+        self.assertIn('mensaje', response.data['errors'])
+
     def test_throttling_estricto(self):
         """
         El rate limit es 2/hour. 

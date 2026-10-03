@@ -51,6 +51,11 @@ class DeviceRegisterView(APIView):
 
         try:
             with transaction.atomic():
+                # Desactivar registros previos de este mismo token en otros usuarios (evita fuga de notificaciones push)
+                DispositivoRegistrado.objects.filter(
+                    token=entrada.validated_data['token']
+                ).exclude(usuario=request.user).update(activo=False)
+
                 dispositivo, creado = DispositivoRegistrado.objects.update_or_create(
                     usuario=request.user,
                     token=entrada.validated_data['token'],
@@ -85,7 +90,7 @@ class AppVersionView(APIView):
 
     def get(self, request):
         respuesta = RespuestaApi()
-        plataforma_param = request.query_params.get('plataforma', 'android').lower()
+        plataforma_param = str(request.query_params.get('plataforma', 'android')).strip()[:20].lower()
 
         if plataforma_param not in dict(VersionAppMovil.PLATAFORMA):
             respuesta.set_success(False)
@@ -166,6 +171,7 @@ class FeedbackView(APIView):
     Recibe comentarios, quejas o sugerencias de los usuarios.
     Protegido con un rate limit estricto para evitar spam.
     """
+    permission_classes = [IsAuthenticated]
     throttle_classes = [FeedbackRateThrottle]
 
     def post(self, request):

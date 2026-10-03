@@ -27,12 +27,12 @@ class EsRepresentanteDelEstudiante(BasePermission):
         )
 
         if student_id is None:
-            return True
+            return False
 
         try:
             student_id = int(student_id)
         except (ValueError, TypeError):
-            return True
+            return False
 
         persona_id = getattr(request.user, 'persona_id', request.user.id)
         return portal.representa_a(persona_id=persona_id, estudiante_id=student_id)
