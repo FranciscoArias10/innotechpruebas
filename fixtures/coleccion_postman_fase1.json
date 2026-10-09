@@ -1,0 +1,137 @@
+{
+  "info": {
+    "name": "SIGE UNIEBEC - Endpoints Fase 1 (Portal Estudiantil)",
+    "_postman_id": "848e3592-cb8a-40a1-a0c5-5a210745f492",
+    "description": "Coleccion de peticiones para los endpoints del estudiante de la Fase 1 contra el backend real de desarrollo.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Autenticacion - Iniciar Sesion",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"usuario73\",\n  \"password\": \"Pasantes2026*\"\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1.0.0/auth/sign-in/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1.0.0", "auth", "sign-in", ""]
+        }
+      }
+    },
+    {
+      "name": "2. Periodos Activos",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{access_token}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1.0.0/period/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1.0.0", "period", ""]
+        }
+      }
+    },
+    {
+      "name": "3. Estudiante - Resumen (Dashboard)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{access_token}}" },
+          { "key": "X-Period-ID", "value": "{{period_id}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1.0.0/movil/student/summary/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1.0.0", "movil", "student", "summary", ""]
+        }
+      }
+    },
+    {
+      "name": "4. Estudiante - Mis Asignaturas",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{access_token}}" },
+          { "key": "X-Period-ID", "value": "{{period_id}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1.0.0/movil/student/subjects/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1.0.0", "movil", "student", "subjects", ""]
+        }
+      }
+    },
+    {
+      "name": "5. Estudiante - Calificaciones Generales",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{access_token}}" },
+          { "key": "X-Period-ID", "value": "{{period_id}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1.0.0/movil/student/grades/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1.0.0", "movil", "student", "grades", ""]
+        }
+      }
+    },
+    {
+      "name": "6. Estudiante - Detalle de Calificaciones por Materia",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{access_token}}" },
+          { "key": "X-Period-ID", "value": "{{period_id}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1.0.0/movil/student/subjects/254/grades/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1.0.0", "movil", "student", "subjects", "254", "grades", ""]
+        }
+      }
+    },
+    {
+      "name": "7. Estudiante - Reporte de Asistencia",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{access_token}}" },
+          { "key": "X-Period-ID", "value": "{{period_id}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1.0.0/movil/student/attendance/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1.0.0", "movil", "student", "attendance", ""]
+        }
+      }
+    },
+    {
+      "name": "8. Estudiante - Horario Semanal",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{access_token}}" },
+          { "key": "X-Period-ID", "value": "{{period_id}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1.0.0/movil/student/schedule/",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1.0.0", "movil", "student", "schedule", ""]
+        }
+      }
+    }
+  ],
+  "variable": [
+    { "key": "base_url", "value": "http://192.168.0.102:8000" },
+    { "key": "access_token", "value": "" },
+    { "key": "period_id", "value": "2" }
+  ]
+}
