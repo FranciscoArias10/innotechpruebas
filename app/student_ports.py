@@ -1,3 +1,4 @@
+import re
 # -*- coding: utf-8 -*-
 """
 Puertos de datos del estudiante contra la base de datos real (SIGE UNIEBEC).
@@ -663,4 +664,396 @@ def registrar_apertura_recurso(persona_id, usuario_id, materia_asignada_id, arch
         'archivo_id': archivo_id,
         'link_id': link_id,
         'materia_asignada_id': real_ma_id
+    }
+
+
+def obtener_actividad_detalle(persona_id, periodo_id, actividad_id):
+    """
+    Obtiene el detalle completo de una actividad y el estado de la entrega del estudiante.
+    """
+    from django.utils import timezone
+    from django.conf import settings
+
+    # 1. Consultar datos de la actividad y la materia a la que pertenece
+    sql_act = """
+        SELECT a.id, a.nombre, a.descripcion, a.fechainicio, a.fechafin,
+               a.cerrada, a.ponderacion, a.tipoentrega, a.tipocalificacion,
+               COALESCE(a.archivo, '') as archivo, a.planificacionsemanal_id,
+               asig.id as asignatura_id, asig.nombre as materia_nombre,
+               COALESCE(asig.color, '#0b3b60') as materia_color,
+               pl.materia_id
+        FROM ctr_actividad a
+        JOIN ctr_planificacionsemanalcontenido pl ON pl.id = a.planificacionsemanal_id
+        JOIN ctr_materia m ON m.id = pl.materia_id
+        JOIN ctr_asignaturamallacurricular amc ON amc.id = m.asignaturamalla_id
+        JOIN ctr_asignatura asig ON asig.id = amc.asignatura_id
+        WHERE a.id = %s AND a.status = TRUE
+        LIMIT 1
+    """
+    act = _query_one(sql_act, [actividad_id])
+    if not act:
+        raise LookupError("Actividad no encontrada.")
+
+    # 2. Obtener la materia asignada del estudiante para esta materia
+    sql_ma = """
+        SELECT ma.id as materia_asignada_id
+        FROM ctr_materiaasignada ma
+        JOIN ctr_nivelmatriculdo nm ON nm.id = ma.nivelmatriculado_id AND nm.status = TRUE
+        JOIN ctr_matricula m ON m.id = nm.matricula_id AND m.status = TRUE
+        JOIN ctr_periodolectivo pl ON pl.id = m.periodolectivo_id
+        JOIN ctr_periodo per ON per.id = pl.periodo_id
+        JOIN ctr_estudiante e ON e.id = m.estudiante_id
+        WHERE e.persona_id = %s AND per.id = %s AND ma.materia_id = %s AND ma.status = TRUE
+        LIMIT 1
+    """
+    ma_row = _query_one(sql_ma, [persona_id, periodo_id, act['materia_id']])
+    ma_id = ma_row['materia_asignada_id'] if ma_row else None
+
+    now = timezone.now()
+    fechafin_dt = act['fechafin']
+    is_expired = bool(act['cerrada']) or (fechafin_dt is not None and fechafin_dt < now)
+
+    archivo_url = None
+    if act['archivo']:
+        archivo_url = f"{settings.MEDIA_URL}{act['archivo']}" if not act['archivo'].startswith('http') else act['archivo']
+
+    # 3. Buscar si el estudiante ya tiene una entrega registrada
+    submission = None
+    if ma_id:
+        sql_entrega = """
+            SELECT e.id, e.fecha, e.observacion, e.entrega, e.es_tardia, e.fecha_creacion
+            FROM ctr_entregaactividad e
+            WHERE e.actividad_id = %s AND e.materiaasignada_id = %s AND e.status = TRUE
+            ORDER BY e.id DESC
+            LIMIT 1
+        """
+        entrega_row = _query_one(sql_entrega, [actividad_id, ma_id])
+        if entrega_row:
+            # Buscar archivos adjuntos de la entrega
+            sql_archivos = """
+                SELECT a.id, a.archivo, a.observacion, a.fecha
+                FROM ctr_entregaactividadarchivo a
+                WHERE a.entregaactividad_id = %s AND a.status = TRUE
+                ORDER BY a.id ASC
+            """
+            archivos_entrega = _query_all(sql_archivos, [entrega_row['id']])
+            for arch in archivos_entrega:
+                if arch['archivo'] and not arch['archivo'].startswith('http'):
+                    arch['url'] = f"{settings.MEDIA_URL}{arch['archivo']}"
+                else:
+                    arch['url'] = arch['archivo']
+                if arch['fecha']:
+                    arch['fecha'] = str(arch['fecha'])
+
+            # Buscar textos de la entrega
+            sql_textos = """
+                SELECT t.id, t.texto, t.observacion, t.fecha
+                FROM ctr_entregaactividadtexto t
+                WHERE t.entregaactividad_id = %s AND t.status = TRUE
+                ORDER BY t.id ASC
+            """
+            textos_entrega = _query_all(sql_textos, [entrega_row['id']])
+            for txt in textos_entrega:
+                if txt['fecha']:
+                    txt['fecha'] = str(txt['fecha'])
+
+            # Buscar nota / calificación y retroalimentación del docente
+            sql_nota = """
+                SELECT n.id, n.nota, n.observacion, n.fecha
+                FROM ctr_notaactividad n
+                WHERE n.actividad_id = %s AND n.materiaasignada_id = %s AND n.status = TRUE
+                ORDER BY n.id DESC
+                LIMIT 1
+            """
+            nota_row = _query_one(sql_nota, [actividad_id, ma_id])
+            nota_info = None
+            if nota_row:
+                nota_info = {
+                    'nota': float(nota_row['nota']) if nota_row['nota'] is not None else None,
+                    'observacion': nota_row['observacion'] or '',
+                    'fecha': str(nota_row['fecha']) if nota_row['fecha'] else None,
+                }
+
+            submission = {
+                'id': entrega_row['id'],
+                'fecha': str(entrega_row['fecha']) if entrega_row['fecha'] else str(entrega_row['fecha_creacion']),
+                'observacion': entrega_row['observacion'] or '',
+                'texto': entrega_row['entrega'] or '',
+                'es_tardia': bool(entrega_row['es_tardia']),
+                'archivos': archivos_entrega,
+                'textos': textos_entrega,
+                'grade': nota_info,
+            }
+
+    return {
+        'activity': {
+            'id': act['id'],
+            'nombre': act['nombre'],
+            'descripcion': act['descripcion'] or '',
+            'fechainicio': str(act['fechainicio']) if act['fechainicio'] else None,
+            'fechafin': str(act['fechafin']) if act['fechafin'] else None,
+            'cerrada': bool(act['cerrada']),
+            'ponderacion': float(act['ponderacion']) if act['ponderacion'] is not None else 10.0,
+            'tipoentrega': act['tipoentrega'] or 1,
+            'tipocalificacion': act['tipocalificacion'] or 1,
+            'archivo': act['archivo'],
+            'archivo_url': archivo_url,
+            'materia': {
+                'id': act['materia_id'],
+                'materia_asignada_id': ma_id,
+                'name': act['materia_nombre'],
+                'color': act['materia_color'],
+            }
+        },
+        'is_expired': is_expired,
+        'has_submission': submission is not None,
+        'submission': submission,
+    }
+
+
+def entregar_actividad(persona_id, usuario_id, periodo_id, actividad_id, texto=None, archivos=None):
+    import re
+    import urllib.parse
+    from django.db import transaction
+    """
+    Registra o actualiza la entrega de una actividad por parte del estudiante.
+    Valida plazos, tipos y almacena archivos físicos y/o texto.
+    """
+    from django.utils import timezone
+    from django.core.files.storage import default_storage
+    from django.core.files.base import ContentFile
+    import os
+
+    # 1. Verificar estado de la actividad
+    sql_act = """
+        SELECT a.id, a.fechafin, a.cerrada, pl.materia_id
+        FROM ctr_actividad a
+        JOIN ctr_planificacionsemanalcontenido pl ON pl.id = a.planificacionsemanal_id
+        WHERE a.id = %s AND a.status = TRUE
+        LIMIT 1
+    """
+    act = _query_one(sql_act, [actividad_id])
+    if not act:
+        raise LookupError("Actividad no encontrada.")
+
+    now = timezone.now()
+    if act['cerrada']:
+        raise ValueError("La actividad está cerrada por el docente y no admite entregas.")
+
+    if act['fechafin'] and act['fechafin'] < now:
+        raise ValueError("El plazo para entregar esta actividad ha vencido.")
+
+    # 2. Localizar materiaasignada_id del estudiante
+    sql_ma = """
+        SELECT ma.id as materia_asignada_id
+        FROM ctr_materiaasignada ma
+        JOIN ctr_nivelmatriculdo nm ON nm.id = ma.nivelmatriculado_id AND nm.status = TRUE
+        JOIN ctr_matricula m ON m.id = nm.matricula_id AND m.status = TRUE
+        JOIN ctr_periodolectivo pl ON pl.id = m.periodolectivo_id
+        JOIN ctr_periodo per ON per.id = pl.periodo_id
+        JOIN ctr_estudiante e ON e.id = m.estudiante_id
+        WHERE e.persona_id = %s AND per.id = %s AND ma.materia_id = %s AND ma.status = TRUE
+        LIMIT 1
+    """
+    ma_row = _query_one(sql_ma, [persona_id, periodo_id, act['materia_id']])
+    if not ma_row:
+        raise LookupError("El estudiante no está matriculado en esta materia en el periodo activo.")
+    ma_id = ma_row['materia_asignada_id']
+
+    # 3. Verificar si ya existe una entrega (activa o inactiva por reintento)
+    sql_existente = """
+        SELECT id, status FROM ctr_entregaactividad
+        WHERE actividad_id = %s AND materiaasignada_id = %s
+        ORDER BY id DESC LIMIT 1
+    """
+    existente = _query_one(sql_existente, [actividad_id, ma_id])
+
+    texto_val = texto.strip() if texto else ''
+    es_tardia = False
+
+    if existente:
+        entrega_id = existente['id']
+        sql_upd = """
+            UPDATE ctr_entregaactividad
+            SET status = TRUE, fecha_modificacion = NOW(), fecha = NOW(), entrega = %s,
+                usuario_modificacion_id = %s
+            WHERE id = %s
+        """
+        with connection.cursor() as cur:
+            cur.execute(sql_upd, [texto_val, usuario_id, entrega_id])
+    else:
+        sql_ins = """
+            INSERT INTO ctr_entregaactividad
+                (fecha_creacion, fecha_modificacion, status, nombre, observacion,
+                 entrega, fecha, actividad_id, materiaasignada_id,
+                 usuario_creacion_id, es_tardia)
+            VALUES
+                (NOW(), NOW(), TRUE, 'Entrega móvil', '',
+                 %s, NOW(), %s, %s, %s, %s)
+            RETURNING id
+        """
+        row = _query_one(sql_ins, [texto_val, actividad_id, ma_id, usuario_id, es_tardia])
+        entrega_id = row['id']
+
+    # 4. Procesar texto en ctr_entregaactividadtexto
+    if texto_val:
+        sql_txt_exist = "SELECT id FROM ctr_entregaactividadtexto WHERE entregaactividad_id = %s AND status = TRUE LIMIT 1"
+        txt_row = _query_one(sql_txt_exist, [entrega_id])
+        if txt_row:
+            with connection.cursor() as cur:
+                cur.execute("UPDATE ctr_entregaactividadtexto SET texto = %s, fecha_modificacion = NOW() WHERE id = %s", [texto_val, txt_row['id']])
+        else:
+            with connection.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO ctr_entregaactividadtexto
+                        (fecha_creacion, fecha_modificacion, status, texto, observacion, fecha, entregaactividad_id, usuario_creacion_id)
+                    VALUES
+                        (NOW(), NOW(), TRUE, %s, '', NOW(), %s, %s)
+                """, [texto_val, entrega_id, usuario_id])
+
+    # 5. Guardar archivos subidos
+    archivos_guardados = []
+    if archivos:
+        carpeta_destino = 'aulavirtual/entregas'
+        for archivo_obj in archivos:
+            import re
+            import urllib.parse
+            nombre_raw = urllib.parse.unquote(getattr(archivo_obj, 'name', 'entrega_adjunto'))
+            nombre_limpio = re.sub(r'[^a-zA-Z0-9._-]', '_', nombre_raw)
+            ruta_relativa = default_storage.save(f"{carpeta_destino}/{entrega_id}_{now.strftime('%Y%m%d%H%M%S')}_{nombre_limpio}", archivo_obj)
+            with connection.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO ctr_entregaactividadarchivo
+                        (fecha_creacion, fecha_modificacion, status, observacion, archivo, fecha, entregaactividad_id, usuario_creacion_id)
+                    VALUES
+                        (NOW(), NOW(), TRUE, %s, %s, NOW(), %s, %s)
+                    RETURNING id
+                """, [nombre_limpio, ruta_relativa, entrega_id, usuario_id])
+                arch_id = cur.fetchone()[0]
+                archivos_guardados.append({'id': arch_id, 'archivo': ruta_relativa, 'nombre': nombre_limpio})
+
+    return {
+        'entrega_id': entrega_id,
+        'actividad_id': actividad_id,
+        'archivos_guardados': archivos_guardados,
+        'texto': texto_val,
+        'fecha': str(now)
+    }
+
+
+def eliminar_entrega_actividad(persona_id, periodo_id, actividad_id):
+    """
+    Elimina la entrega de una actividad (status = FALSE) mientras el plazo siga abierto.
+    """
+    from django.utils import timezone
+
+    sql_act = """
+        SELECT a.id, a.fechafin, a.cerrada, pl.materia_id
+        FROM ctr_actividad a
+        JOIN ctr_planificacionsemanalcontenido pl ON pl.id = a.planificacionsemanal_id
+        WHERE a.id = %s AND a.status = TRUE
+        LIMIT 1
+    """
+    act = _query_one(sql_act, [actividad_id])
+    if not act:
+        raise LookupError("Actividad no encontrada.")
+
+    now = timezone.now()
+    if act['cerrada']:
+        raise ValueError("La actividad está cerrada. No se puede eliminar la entrega.")
+    if act['fechafin'] and act['fechafin'] < now:
+        raise ValueError("El plazo ha vencido. No se puede eliminar la entrega.")
+
+    sql_ma = """
+        SELECT ma.id as materia_asignada_id
+        FROM ctr_materiaasignada ma
+        JOIN ctr_nivelmatriculdo nm ON nm.id = ma.nivelmatriculado_id AND nm.status = TRUE
+        JOIN ctr_matricula m ON m.id = nm.matricula_id AND m.status = TRUE
+        JOIN ctr_periodolectivo pl ON pl.id = m.periodolectivo_id
+        JOIN ctr_periodo per ON per.id = pl.periodo_id
+        JOIN ctr_estudiante e ON e.id = m.estudiante_id
+        WHERE e.persona_id = %s AND per.id = %s AND ma.materia_id = %s AND ma.status = TRUE
+        LIMIT 1
+    """
+    ma_row = _query_one(sql_ma, [persona_id, periodo_id, act['materia_id']])
+    if not ma_row:
+        raise LookupError("Estudiante no matriculado en esta materia.")
+
+    ma_id = ma_row['materia_asignada_id']
+
+    with connection.cursor() as cur:
+        # Desactivar entrega y sus archivos/textos
+        cur.execute("""
+            UPDATE ctr_entregaactividad
+            SET status = FALSE, fecha_modificacion = NOW()
+            WHERE actividad_id = %s AND materiaasignada_id = %s AND status = TRUE
+            RETURNING id
+        """, [actividad_id, ma_id])
+        rows = cur.fetchall()
+        for r in rows:
+            ent_id = r[0]
+            cur.execute("UPDATE ctr_entregaactividadarchivo SET status = FALSE WHERE entregaactividad_id = %s", [ent_id])
+            cur.execute("UPDATE ctr_entregaactividadtexto SET status = FALSE WHERE entregaactividad_id = %s", [ent_id])
+
+    return {'eliminada': True, 'actividad_id': actividad_id}
+
+
+def obtener_actividades_pendientes(persona_id, periodo_id):
+    """
+    Lista todas las actividades de las materias matriculadas en el periodo actual,
+    ordenadas cronologicamente por fecha de cierre.
+    """
+    from django.utils import timezone
+    now = timezone.now()
+
+    sql = """
+        SELECT a.id, a.nombre, a.descripcion, a.fechainicio, a.fechafin,
+               a.cerrada, a.ponderacion, a.tipoentrega,
+               m.id as materia_id, ma.id as materia_asignada_id,
+               asig.nombre as materia_nombre, COALESCE(asig.color, '#0b3b60') as materia_color,
+               e_act.id as entrega_id, e_act.fecha as fecha_entrega,
+               n_act.nota
+        FROM ctr_estudiante est
+        JOIN ctr_matricula mat ON mat.estudiante_id = est.id AND mat.status = TRUE
+        JOIN ctr_periodolectivo pl ON pl.id = mat.periodolectivo_id
+        JOIN ctr_periodo per ON per.id = pl.periodo_id
+        JOIN ctr_nivelmatriculdo nm ON nm.matricula_id = mat.id AND nm.status = TRUE
+        JOIN ctr_materiaasignada ma ON ma.nivelmatriculado_id = nm.id AND ma.status = TRUE
+        JOIN ctr_materia m ON m.id = ma.materia_id
+        JOIN ctr_asignaturamallacurricular amc ON amc.id = m.asignaturamalla_id
+        JOIN ctr_asignatura asig ON asig.id = amc.asignatura_id
+        JOIN ctr_planificacionsemanalcontenido plan ON plan.materia_id = m.id AND plan.status = TRUE
+        JOIN ctr_actividad a ON a.planificacionsemanal_id = plan.id AND a.status = TRUE AND (a.oculto = FALSE OR a.oculto IS NULL)
+        LEFT JOIN ctr_entregaactividad e_act ON e_act.actividad_id = a.id AND e_act.materiaasignada_id = ma.id AND e_act.status = TRUE
+        LEFT JOIN ctr_notaactividad n_act ON n_act.actividad_id = a.id AND n_act.materiaasignada_id = ma.id AND n_act.status = TRUE
+        WHERE est.persona_id = %s AND per.id = %s
+        ORDER BY a.fechafin ASC NULLS LAST, a.id DESC
+    """
+    rows = _query_all(sql, [persona_id, periodo_id])
+    actividades = []
+    for r in rows:
+        fechafin_dt = r['fechafin']
+        is_expired = bool(r['cerrada']) or (fechafin_dt is not None and fechafin_dt < now)
+        actividades.append({
+            'id': r['id'],
+            'nombre': r['nombre'],
+            'descripcion': r['descripcion'] or '',
+            'fechainicio': str(r['fechainicio']) if r['fechainicio'] else None,
+            'fechafin': str(r['fechafin']) if r['fechafin'] else None,
+            'cerrada': bool(r['cerrada']),
+            'ponderacion': float(r['ponderacion']) if r['ponderacion'] is not None else 10.0,
+            'tipoentrega': r['tipoentrega'] or 1,
+            'materia_id': r['materia_id'],
+            'materia_asignada_id': r['materia_asignada_id'],
+            'materia_nombre': r['materia_nombre'],
+            'materia_color': r['materia_color'],
+            'entregada': r['entrega_id'] is not None,
+            'fecha_entrega': str(r['fecha_entrega']) if r['fecha_entrega'] else None,
+            'nota': float(r['nota']) if r['nota'] is not None else None,
+            'vencida': is_expired and r['entrega_id'] is None,
+        })
+    return {
+        'activities': actividades,
+        'total': len(actividades),
+        'pending_count': len([a for a in actividades if not a['entregada'] and not a['vencida']])
     }
