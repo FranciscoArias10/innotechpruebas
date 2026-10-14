@@ -85,11 +85,11 @@ def generar_horario_html(persona_id, periodo_id, datos_horario):
         cur.execute(sql_est, [periodo_id, persona_id])
         row = cur.fetchone()
 
-    nombre_est = 'Estudiante'
+    nombre_est = 'Alumno'
     periodo_nombre = 'Periodo Académico'
     if row:
         apellidos = f"{row[1] or ''} {row[2] or ''}".strip()
-        nombre_est = f"{row[0] or ''} {apellidos}".strip() or 'Estudiante'
+        nombre_est = f"{row[0] or ''} {apellidos}".strip() or 'Alumno'
         periodo_nombre = row[3] or 'Periodo Académico'
 
     dias_base = [
@@ -412,7 +412,7 @@ def generar_horario_html(persona_id, periodo_id, datos_horario):
         <div>
             <div class="doc-brand">SISTEMA INTEGRADO DE GESTIÓN EDUCATIVA · UNIEBEC</div>
             <div class="doc-title">Horario Oficial de Clases · {periodo_nombre}</div>
-            <div class="doc-sub">Estudiante: <b>{nombre_est}</b> · Fecha de emisión: {datetime.now().strftime("%d/%m/%Y %H:%M")}</div>
+            <div class="doc-sub">Alumno: <b>{nombre_est}</b> · Fecha de emisión: {datetime.now().strftime("%d/%m/%Y %H:%M")}</div>
         </div>
         <div class="doc-badge">HORARIO OFICIAL</div>
     </div>
@@ -464,7 +464,7 @@ def generar_horario_html(persona_id, periodo_id, datos_horario):
                     badge_texto = 'En vivo' if es_en_vivo else 'Clase grabada'
                     badge_icon = ICONS_SVG['video'] if es_en_vivo else ICONS_SVG['play-triangle']
                     
-                    prof = c.get('profesor') or 'Docente titular'
+                    prof = (c.get('docente') or c.get('profesor')) or 'Docente titular'
                     doc_icon = ICONS_SVG['doc']
                     
                     nom_titulo = ' '.join(p.capitalize() for p in nom.split())
@@ -522,11 +522,11 @@ def generar_horario_pdf_reportlab_fallback(persona_id, periodo_id, datos_horario
         cur.execute(sql_est, [periodo_id, persona_id])
         row = cur.fetchone()
     
-    nombre_est = 'Estudiante'
+    nombre_est = 'Alumno'
     periodo_nombre = 'Periodo Académico'
     if row:
         apellidos = f"{row[1] or ''} {row[2] or ''}".strip()
-        nombre_est = f"{row[0] or ''} {apellidos}".strip() or 'Estudiante'
+        nombre_est = f"{row[0] or ''} {apellidos}".strip() or 'Alumno'
         periodo_nombre = row[3] or 'Periodo Académico'
 
     buffer = io.BytesIO()
@@ -565,7 +565,7 @@ def generar_horario_pdf_reportlab_fallback(persona_id, periodo_id, datos_horario
     elementos.append(Paragraph('UNIDAD EDUCATIVA BOLIVARIANA', titulo_style))
     elementos.append(Spacer(1, 2))
     elementos.append(Paragraph(f'HORARIO OFICIAL DE CLASES · {periodo_nombre}', subtitulo_style))
-    elementos.append(Paragraph(f'Estudiante: <b>{nombre_est}</b> · Fecha de emisión: {datetime.now().strftime("%d/%m/%Y %H:%M")}', subtitulo_style))
+    elementos.append(Paragraph(f'Alumno: <b>{nombre_est}</b> · Fecha de emisión: {datetime.now().strftime("%d/%m/%Y %H:%M")}', subtitulo_style))
     elementos.append(Spacer(1, 8))
 
     dias_titulos = ['HORA', 'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES']

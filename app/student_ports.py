@@ -429,6 +429,7 @@ def obtener_horario_estudiante(persona_id, periodo_id):
             'paralelo': r['paralelo'],
             'aula': r['aula'],
             'profesor': r['profesor'] or 'Docente Asignado',
+            'docente': r['profesor'] or 'Docente Asignado',
             'inicio': str(r['inicio']),
             'fin': str(r['fin']),
             'color': r['color'],
