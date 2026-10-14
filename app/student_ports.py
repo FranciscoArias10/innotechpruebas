@@ -345,12 +345,17 @@ def obtener_horario_estudiante(persona_id, periodo_id):
     sql = """
         SELECT 
             cl.dia,
-            cl.inicio, cl.fin,
+            COALESCE(TO_CHAR(t.comienza, 'HH24:MI'), TO_CHAR(cl.inicio, 'HH24:MI'), '08:00') as inicio,
+            COALESCE(TO_CHAR(t.termina, 'HH24:MI'), TO_CHAR(cl.fin, 'HH24:MI'), '08:45') as fin,
             asig.nombre as materia,
             COALESCE(asig.color, '#0073bc') as color,
             COALESCE(au.nombre, 'Aula Virtual') as aula,
             COALESCE(par.nombre, 'A') as paralelo,
             TRIM(COALESCE(prof_p.nombres, '') || ' ' || COALESCE(prof_p.apellido_1, '')) as profesor,
+            COALESCE(cl.modalidad, 1) as modalidad,
+            COALESCE(cl.zoom_join_url, '') as zoom_join_url,
+            COALESCE(cl.zoom_meeting_id, '') as zoom_meeting_id,
+            COALESCE(cl.zoom_password, '') as zoom_password,
             t.id as turno_id,
             COALESCE(t.nombre, 'MATUTINO') as turno_nombre,
             COALESCE(CAST(t.turno AS text), 'MAT') as turno_corto,
@@ -371,16 +376,32 @@ def obtener_horario_estudiante(persona_id, periodo_id):
         LEFT JOIN ctr_persona prof_p ON prof_p.id = prof.persona_id
         LEFT JOIN ctr_turno t ON t.id = cl.turno_id
         WHERE e.persona_id = %s AND per.id = %s
-        ORDER BY cl.dia ASC, cl.inicio ASC
+        ORDER BY cl.dia ASC, t.comienza ASC
     """
     rows = _query_all(sql, [persona_id, periodo_id])
 
-    nombres_dias = {
-        0: 'LUNES', 1: 'MARTES', 2: 'MIERCOLES', 3: 'JUEVES', 4: 'VIERNES', 5: 'SABADO', 6: 'DOMINGO',
-        1: 'LUNES', 2: 'MARTES', 3: 'MIERCOLES', 4: 'JUEVES', 5: 'VIERNES', 6: 'SABADO', 7: 'DOMINGO'
+    # En BD ctr_clase.dia va de 0 a 4 (0=LUNES, 1=MARTES, 2=MIERCOLES, 3=JUEVES, 4=VIERNES)
+    # Estandarizamos indice 1: LUNES ... 5: VIERNES
+    dias_nombres_map = {
+        0: (1, 'LUNES'),
+        1: (2, 'MARTES'),
+        2: (3, 'MIERCOLES'),
+        3: (4, 'JUEVES'),
+        4: (5, 'VIERNES'),
+        5: (6, 'SABADO'),
+        6: (7, 'DOMINGO')
     }
 
-    # Agrupar por turnos y dias
+    # Grilla base para dias_visibles
+    dias_visibles = [
+        {'indice': 1, 'nombre': 'LUNES', 'clases': []},
+        {'indice': 2, 'nombre': 'MARTES', 'clases': []},
+        {'indice': 3, 'nombre': 'MIERCOLES', 'clases': []},
+        {'indice': 4, 'nombre': 'JUEVES', 'clases': []},
+        {'indice': 5, 'nombre': 'VIERNES', 'clases': []},
+    ]
+    dias_visibles_map = {d['indice']: d for d in dias_visibles}
+
     turnos_dict = {}
     for r in rows:
         t_id = r['turno_id'] or 1
@@ -393,24 +414,42 @@ def obtener_horario_estudiante(persona_id, periodo_id):
                 'dias_map': {}
             }
 
-        dia_num = r['dia']
-        dia_nombre = nombres_dias.get(dia_num, 'LUNES')
-        if dia_num not in turnos_dict[t_id]['dias_map']:
-            turnos_dict[t_id]['dias_map'][dia_num] = {
-                'indice': dia_num,
-                'nombre': dia_nombre,
-                'clases': []
-            }
+        dia_raw = r['dia']
+        if dia_raw in dias_nombres_map:
+            indice_dia, nombre_dia = dias_nombres_map[dia_raw]
+        elif dia_raw in (1, 2, 3, 4, 5, 6, 7):
+            indice_dia = dia_raw
+            nombre_dia = dias_visibles_map.get(dia_raw, {}).get('nombre', 'LUNES')
+        else:
+            indice_dia = 1
+            nombre_dia = 'LUNES'
 
-        turnos_dict[t_id]['dias_map'][dia_num]['clases'].append({
+        clase_item = {
             'nombre': r['materia'],
             'paralelo': r['paralelo'],
             'aula': r['aula'],
             'profesor': r['profesor'] or 'Docente Asignado',
             'inicio': str(r['inicio']),
             'fin': str(r['fin']),
-            'color': r['color']
-        })
+            'color': r['color'],
+            'modalidad': r['modalidad'],
+            'zoom_join_url': r['zoom_join_url'],
+            'zoom_meeting_id': r['zoom_meeting_id'],
+            'zoom_password': r['zoom_password']
+        }
+
+        # Agregar al mapa de turnos
+        if indice_dia not in turnos_dict[t_id]['dias_map']:
+            turnos_dict[t_id]['dias_map'][indice_dia] = {
+                'indice': indice_dia,
+                'nombre': nombre_dia,
+                'clases': []
+            }
+        turnos_dict[t_id]['dias_map'][indice_dia]['clases'].append(clase_item)
+
+        # Agregar a dias_visibles si corresponde (1 a 5)
+        if indice_dia in dias_visibles_map:
+            dias_visibles_map[indice_dia]['clases'].append(clase_item)
 
     turnos_salida = []
     for t_data in turnos_dict.values():
@@ -423,7 +462,6 @@ def obtener_horario_estudiante(persona_id, periodo_id):
             'dias': dias_lista
         })
 
-    # Si no hay turnos con clases, entregar grilla base de 5 dias vacios
     if not turnos_salida:
         turnos_salida = [{
             'id': 1,
@@ -433,19 +471,10 @@ def obtener_horario_estudiante(persona_id, periodo_id):
             'dias': []
         }]
 
-    dias_visibles = [
-        {'indice': 1, 'nombre': 'LUNES', 'clases': []},
-        {'indice': 2, 'nombre': 'MARTES', 'clases': []},
-        {'indice': 3, 'nombre': 'MIERCOLES', 'clases': []},
-        {'indice': 4, 'nombre': 'JUEVES', 'clases': []},
-        {'indice': 5, 'nombre': 'VIERNES', 'clases': []},
-    ]
-
     return {
         'turnos': turnos_salida,
         'dias_visibles': dias_visibles
     }
-
 
 def obtener_planificacion_materia(persona_id, periodo_id, materia_asignada_id, semana=None):
     """

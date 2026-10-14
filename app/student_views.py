@@ -256,11 +256,32 @@ class StudentAttendanceView(APIView):
         return respuesta.to_dict()
 
 
+from rest_framework.renderers import BaseRenderer, JSONRenderer, BrowsableAPIRenderer
+
+class PDFRenderer(BaseRenderer):
+    media_type = 'application/pdf'
+    format = 'pdf'
+    charset = None
+    render_style = 'binary'
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        return data
+
 class StudentScheduleView(APIView):
     """
     GET /api/v1.0.0/movil/student/schedule/
 
     Retorna el horario semanal de clases del estudiante para el periodo.
+    Soporta ?format=pdf para generar y descargar el horario en documento PDF.
+    """
+    permission_classes = [IsAuthenticated]
+    renderer_classes = [JSONRenderer, BrowsableAPIRenderer, PDFRenderer]
+
+    """
+    GET /api/v1.0.0/movil/student/schedule/
+
+    Retorna el horario semanal de clases del estudiante para el periodo.
+    Soporta ?format=pdf para generar y descargar el horario en documento PDF.
     """
     permission_classes = [IsAuthenticated]
 
@@ -287,11 +308,27 @@ class StudentScheduleView(APIView):
             respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
             return respuesta.to_dict()
 
+        # Si solicita formato PDF
+        if request.GET.get('format') == 'pdf':
+            try:
+                from django.http import HttpResponse
+                from app.pdf_horario import generar_horario_pdf
+                pdf_bytes = generar_horario_pdf(est['persona_id'], periodo_id, datos)
+                response = HttpResponse(pdf_bytes, content_type='application/pdf')
+                response['Content-Disposition'] = 'inline; filename="horario_clases.pdf"'
+                return response
+            except Exception:
+                respuesta.set_success(False)
+                respuesta.set_message('Ocurrio un error al generar el PDF del horario.')
+                respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+                return respuesta.to_dict()
+
         respuesta.set_success(True)
         respuesta.set_message('Horario de clases recuperado con exito.')
         respuesta.set_data(datos)
         respuesta.set_status(status.HTTP_200_OK)
         return respuesta.to_dict()
+
 class StudentHomeView(APIView):
     """
     GET /api/v1.0.0/movil/student/home/
