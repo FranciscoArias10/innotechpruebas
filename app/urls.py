@@ -28,6 +28,8 @@ from app.student_views import (
     StudentPlanningView,
     StudentClassmatesView,
     StudentResourceOpenView,
+    StudentActivityDetailView,
+    StudentCalendarView,
 )
 
 urlpatterns = [
@@ -52,6 +54,12 @@ urlpatterns = [
     # Alias sin sufijo movil o con compatibilidad
     path('student/resources/open/', StudentResourceOpenView.as_view(), name='movil-student-resource-open-global'),
 
+
+
+    # Tarea 05: Actividades, entregas y calendario
+    path('student/activity/<int:actividad_id>/', StudentActivityDetailView.as_view(), name='movil-student-activity-detail'),
+    path('student/calendar/', StudentCalendarView.as_view(), name='movil-student-calendar'),
+    path('student/activities/pending/', StudentCalendarView.as_view(), name='movil-student-activities-pending'),
 
     # Endpoints del representante
     path('representative/students/<int:student_id>/grades/', RepresentativeStudentGradesView.as_view(), name='movil-representative-student-grades'),

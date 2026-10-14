@@ -487,3 +487,164 @@ class StudentResourceOpenView(APIView):
         respuesta.set_data(datos)
         respuesta.set_status(status.HTTP_201_CREATED)
         return respuesta.to_dict()
+
+
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from app.student_ports import (
+    obtener_actividad_detalle,
+    entregar_actividad,
+    eliminar_entrega_actividad,
+    obtener_actividades_pendientes,
+)
+
+
+class StudentActivityDetailView(APIView):
+    """
+    GET  -> Detalle de la actividad y estado de entrega
+    POST -> Entregar la actividad con archivos o texto
+    DELETE -> Eliminar entrega (si sigue dentro del plazo)
+    """
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get(self, request, actividad_id):
+        resp = RespuestaApi()
+        periodo_id = _obtener_periodo_id(request, resp)
+        if periodo_id is None:
+            return resp.to_dict()
+
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        try:
+            data = obtener_actividad_detalle(est['persona_id'], periodo_id, actividad_id)
+            resp.set_success(True)
+            resp.set_message("Detalle de actividad recuperado con exito.")
+            resp.set_data(data)
+            resp.set_status(status.HTTP_200_OK)
+        except LookupError as e:
+            resp.set_success(False)
+            resp.set_message(str(e))
+            resp.set_status(status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message("Error interno al obtener detalle de actividad.")
+            resp.set_errors({'error': [str(e)]})
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()
+
+    def post(self, request, actividad_id):
+        resp = RespuestaApi()
+        periodo_id = _obtener_periodo_id(request, resp)
+        if periodo_id is None:
+            return resp.to_dict()
+
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        texto = request.data.get('texto') or request.data.get('entrega') or ''
+        archivos = request.FILES.getlist('archivo') or request.FILES.getlist('archivos') or request.FILES.getlist('file')
+
+        if not texto and not archivos:
+            resp.set_success(False)
+            resp.set_message("Debes adjuntar al menos un archivo o ingresar una respuesta en texto.")
+            resp.set_errors({'entrega': ['No se proporciono archivo ni texto.']})
+            resp.set_status(status.HTTP_400_BAD_REQUEST)
+            return resp.to_dict()
+
+        try:
+            data = entregar_actividad(
+                est['persona_id'],
+                request.user.id,
+                periodo_id,
+                actividad_id,
+                texto=texto,
+                archivos=archivos
+            )
+            resp.set_success(True)
+            resp.set_message("Actividad entregada exitosamente.")
+            resp.set_data(data)
+            resp.set_status(status.HTTP_201_CREATED)
+        except ValueError as ve:
+            resp.set_success(False)
+            resp.set_message(str(ve))
+            resp.set_errors({'plazo': [str(ve)]})
+            resp.set_status(status.HTTP_400_BAD_REQUEST)
+        except LookupError as le:
+            resp.set_success(False)
+            resp.set_message(str(le))
+            resp.set_status(status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message("No se pudo registrar la entrega de la actividad.")
+            resp.set_errors({'error': [str(e)]})
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()
+
+    def delete(self, request, actividad_id):
+        resp = RespuestaApi()
+        periodo_id = _obtener_periodo_id(request, resp)
+        if periodo_id is None:
+            return resp.to_dict()
+
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        try:
+            data = eliminar_entrega_actividad(est['persona_id'], periodo_id, actividad_id)
+            resp.set_success(True)
+            resp.set_message("Entrega eliminada exitosamente.")
+            resp.set_data(data)
+            resp.set_status(status.HTTP_200_OK)
+        except ValueError as ve:
+            resp.set_success(False)
+            resp.set_message(str(ve))
+            resp.set_errors({'plazo': [str(ve)]})
+            resp.set_status(status.HTTP_400_BAD_REQUEST)
+        except LookupError as le:
+            resp.set_success(False)
+            resp.set_message(str(le))
+            resp.set_status(status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message("Error al eliminar la entrega.")
+            resp.set_errors({'error': [str(e)]})
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()
+
+
+class StudentCalendarView(APIView):
+    """
+    GET -> Actividades y calendario general del estudiante
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        resp = RespuestaApi()
+        periodo_id = _obtener_periodo_id(request, resp)
+        if periodo_id is None:
+            return resp.to_dict()
+
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        try:
+            data = obtener_actividades_pendientes(est['persona_id'], periodo_id)
+            resp.set_success(True)
+            resp.set_message("Actividades y cronograma recuperados con exito.")
+            resp.set_data(data)
+            resp.set_status(status.HTTP_200_OK)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message("Error al obtener actividades del calendario.")
+            resp.set_errors({'error': [str(e)]})
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()
