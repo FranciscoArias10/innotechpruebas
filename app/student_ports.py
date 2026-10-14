@@ -139,7 +139,7 @@ def obtener_materias_estudiante(persona_id, periodo_id):
             ma.id as materia_asignada_id,
             mat.id as materia_id,
             asig.nombre as name,
-            COALESCE(asig.color, '#0073bc') as color,
+            COALESCE(NULLIF(asig.color, ''), '#0073bc') as color,
             COALESCE(n.nombre, '') as level,
             COALESCE(par.nombre, 'A') as parallel,
             ROUND(CAST(COALESCE(ma.notafinal, 0) AS numeric), 2) as final_grade,
@@ -348,7 +348,7 @@ def obtener_horario_estudiante(persona_id, periodo_id):
             COALESCE(TO_CHAR(t.comienza, 'HH24:MI'), TO_CHAR(cl.inicio, 'HH24:MI'), '08:00') as inicio,
             COALESCE(TO_CHAR(t.termina, 'HH24:MI'), TO_CHAR(cl.fin, 'HH24:MI'), '08:45') as fin,
             asig.nombre as materia,
-            COALESCE(asig.color, '#0073bc') as color,
+            COALESCE(NULLIF(asig.color, ''), '#0073bc') as color,
             COALESCE(au.nombre, 'Aula Virtual') as aula,
             COALESCE(par.nombre, 'A') as paralelo,
             TRIM(COALESCE(prof_p.nombres, '') || ' ' || COALESCE(prof_p.apellido_1, '')) as profesor,
@@ -484,7 +484,7 @@ def obtener_planificacion_materia(persona_id, periodo_id, materia_asignada_id, s
     """
     sql_materia = """
         SELECT ma.id as materia_asignada_id, mat.id as materia_id, asig.nombre as name,
-               COALESCE(asig.color, '#0073bc') as color,
+               COALESCE(NULLIF(asig.color, ''), '#0073bc') as color,
                COALESCE(n.nombre, '') as level,
                COALESCE(par.nombre, 'A') as parallel,
                ROUND(CAST(COALESCE(ma.notafinal, 0) AS numeric), 2) as final_grade,
