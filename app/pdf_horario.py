@@ -21,10 +21,14 @@ AREAS_MAP = [
     ('cultura fisica', 'DEPORTE', '#f59e0b', 'running'),
     ('educacion fisica', 'DEPORTE', '#f59e0b', 'running'),
     ('deport', 'DEPORTE', '#f59e0b', 'running'),
+    ('ciencias naturales', 'CIENCIA', '#68c079', 'dna'),
+    ('natural', 'CIENCIA', '#68c079', 'dna'),
     ('quimic', 'CIENCIA', '#a7bd39', 'flask'),
     ('biolog', 'CIENCIA', '#68c079', 'dna'),
     ('fisica', 'CIENCIA', '#12a79d', 'atom'),
+    ('ciencia', 'CIENCIA', '#a7bd39', 'flask'),
     ('matematic', 'EXACTAS', '#0073bc', 'calculator'),
+    ('estudios sociales', 'SOCIALES', '#c8874f', 'globe'),
     ('historia', 'SOCIALES', '#c8874f', 'globe'),
     ('social', 'SOCIALES', '#c8874f', 'globe'),
     ('ciudadan', 'SOCIALES', '#ea5455', 'landmark'),
@@ -88,24 +92,29 @@ def generar_horario_html(persona_id, periodo_id, datos_horario):
         nombre_est = f"{row[0] or ''} {apellidos}".strip() or 'Estudiante'
         periodo_nombre = row[3] or 'Periodo Académico'
 
-    dias_info = [
+    dias_base = [
         (1, 'LUNES'),
         (2, 'MARTES'),
         (3, 'MIÉRCOLES'),
         (4, 'JUEVES'),
-        (5, 'VIERNES')
+        (5, 'VIERNES'),
+        (6, 'SÁBADO')
     ]
     dia_hoy_num = datetime.now().isoweekday()
 
-    clases_por_dia = {1: [], 2: [], 3: [], 4: [], 5: []}
+    clases_por_dia = {1: [], 2: [], 3: [], 4: [], 5: [], 6: []}
     for d in datos_horario.get('dias_visibles', []):
         idx = d.get('indice', 1)
         if idx in clases_por_dia:
             clases_por_dia[idx] = d.get('clases', [])
 
+    # Solo incluir Sábado si el alumno tiene clases registradas ese día
+    dias_info = [d for d in dias_base if d[0] <= 5 or len(clases_por_dia[d[0]]) > 0]
+    total_dias = len(dias_info)
+
     horas_set = set()
-    for d_clases in clases_por_dia.values():
-        for c in d_clases:
+    for d_idx, _ in dias_info:
+        for c in clases_por_dia[d_idx]:
             ini = c.get('inicio', '')
             fin = c.get('fin', '')
             if ini and fin:
@@ -113,58 +122,58 @@ def generar_horario_html(persona_id, periodo_id, datos_horario):
 
     horas_ordenadas = sorted(list(horas_set), key=lambda x: x[0])
 
-    css = """
-    @page {
+    css = f"""
+    @page {{
         size: letter landscape;
         margin: 5mm 6mm;
-    }
-    * {
+    }}
+    * {{
         box-sizing: border-box;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
-    }
-    body {
+    }}
+    body {{
         margin: 0;
         padding: 0;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         background: #f8fafc;
         color: #0f172a;
-    }
-    .horario-container {
+    }}
+    .horario-container {{
         width: 100%;
         background: #f4f7fa;
         border-radius: 14px;
         padding: 10px 14px 8px;
         box-sizing: border-box;
-    }
-    .doc-header {
+    }}
+    .doc-header {{
         display: flex;
         justify-content: space-between;
         align-items: flex-end;
         margin-bottom: 8px;
         padding-bottom: 5px;
         border-bottom: 1.5px solid #002B49;
-    }
-    .doc-brand {
+    }}
+    .doc-brand {{
         font-size: 7.5px;
         font-weight: 800;
         letter-spacing: 0.16em;
         text-transform: uppercase;
         color: #0073bc;
-    }
-    .doc-title {
+    }}
+    .doc-title {{
         font-size: 14px;
         font-weight: 900;
         color: #002B49;
         margin: 1px 0 2px;
         text-transform: uppercase;
         letter-spacing: -0.01em;
-    }
-    .doc-sub {
+    }}
+    .doc-sub {{
         font-size: 8px;
         color: #64748b;
-    }
-    .doc-badge {
+    }}
+    .doc-badge {{
         background: #002B49;
         color: #ffffff;
         font-size: 7.5px;
@@ -173,29 +182,29 @@ def generar_horario_html(persona_id, periodo_id, datos_horario):
         padding: 3px 8px;
         border-radius: 5px;
         text-transform: uppercase;
-    }
-    .tabla-grid {
+    }}
+    .tabla-grid {{
         width: 100%;
         display: grid;
-        grid-template-columns: 84px repeat(5, 1fr);
+        grid-template-columns: 84px repeat({total_dias}, 1fr);
         gap: 7px 6px;
         align-items: stretch;
-    }
-    .th-col {
+    }}
+    .th-col {{
         padding: 2px 3px 5px;
         border-bottom: 2px solid #cbd5e1;
         display: flex;
         justify-content: space-between;
         align-items: flex-end;
-    }
-    .th-col.th-hora {
+    }}
+    .th-col.th-hora {{
         font-size: 8px;
         font-weight: 800;
         letter-spacing: 0.14em;
         text-transform: uppercase;
         color: #94a3b8;
-    }
-    .th-dia {
+    }}
+    .th-dia {{
         font-size: 10px;
         font-weight: 800;
         letter-spacing: 0.08em;
@@ -204,16 +213,16 @@ def generar_horario_html(persona_id, periodo_id, datos_horario):
         display: flex;
         align-items: center;
         gap: 4px;
-    }
-    .th-dia.es-hoy {
+    }}
+    .th-dia.es-hoy {{
         color: #0073bc;
-    }
-    .th-count {
+    }}
+    .th-count {{
         font-size: 7.5px;
         color: #94a3b8;
         font-weight: 600;
-    }
-    .th-hoy-badge {
+    }}
+    .th-hoy-badge {{
         background: #e0f2fe;
         color: #0284c7;
         font-size: 6px;
@@ -221,40 +230,40 @@ def generar_horario_html(persona_id, periodo_id, datos_horario):
         padding: 1px 4px;
         border-radius: 999px;
         letter-spacing: 0.08em;
-    }
-    .turno-cell {
+    }}
+    .turno-cell {{
         display: flex;
         flex-direction: column;
         justify-content: center;
         padding: 3px 2px;
         border-bottom: 1px solid #e2e8f0;
-    }
-    .turno-tag {
+    }}
+    .turno-tag {{
         font-size: 7px;
         font-weight: 800;
         letter-spacing: 0.08em;
         color: #94a3b8;
         text-transform: uppercase;
-    }
-    .turno-tipo {
+    }}
+    .turno-tipo {{
         font-size: 6.5px;
         font-weight: 700;
         color: #cbd5e1;
         margin-bottom: 2px;
-    }
-    .turno-hora-inicio {
+    }}
+    .turno-hora-inicio {{
         font-size: 13px;
         font-weight: 800;
         color: #0f172a;
         line-height: 1.1;
         font-variant-numeric: tabular-nums;
-    }
-    .turno-hora-fin {
+    }}
+    .turno-hora-fin {{
         font-size: 8.5px;
         color: #64748b;
         font-variant-numeric: tabular-nums;
-    }
-    .clase-card {
+    }}
+    .clase-card {{
         border-radius: 12px;
         border: 1px solid var(--borde-color);
         background: var(--bg-pastel);
@@ -266,13 +275,13 @@ def generar_horario_html(persona_id, periodo_id, datos_horario):
         width: 100%;
         box-sizing: border-box;
         box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-    }
-    .clase-top {
+    }}
+    .clase-top {{
         display: flex;
         align-items: flex-start;
         gap: 7px;
-    }
-    .clase-ico-squircle {
+    }}
+    .clase-ico-squircle {{
         width: 34px;
         height: 34px;
         min-width: 34px;
@@ -283,12 +292,12 @@ def generar_horario_html(persona_id, periodo_id, datos_horario):
         align-items: center;
         justify-content: center;
         color: var(--accent-color);
-    }
-    .clase-meta {
+    }}
+    .clase-meta {{
         flex: 1;
         min-width: 0;
-    }
-    .clase-area {
+    }}
+    .clase-area {{
         font-size: 7px;
         font-weight: 800;
         letter-spacing: 0.1em;
@@ -297,20 +306,20 @@ def generar_horario_html(persona_id, periodo_id, datos_horario):
         margin-bottom: 1.5px;
         color: var(--accent-color);
         opacity: 0.9;
-    }
-    .clase-title-row {
+    }}
+    .clase-title-row {{
         display: flex;
         align-items: center;
         gap: 4px;
         flex-wrap: wrap;
-    }
-    .clase-nombre {
+    }}
+    .clase-nombre {{
         font-size: 9.5px;
         font-weight: 800;
         color: #0f172a;
         line-height: 1.15;
-    }
-    .clase-badge {
+    }}
+    .clase-badge {{
         display: inline-flex;
         align-items: center;
         gap: 2.5px;
@@ -321,8 +330,8 @@ def generar_horario_html(persona_id, periodo_id, datos_horario):
         color: #ffffff;
         background: var(--accent-color);
         white-space: nowrap;
-    }
-    .clase-inner {
+    }}
+    .clase-inner {{
         background: #ffffff;
         border-radius: 8px;
         padding: 3.5px 6px;
@@ -330,21 +339,21 @@ def generar_horario_html(persona_id, periodo_id, datos_horario):
         display: flex;
         flex-direction: column;
         gap: 1px;
-    }
-    .inner-modalidad {
+    }}
+    .inner-modalidad {{
         display: flex;
         align-items: center;
         gap: 3px;
         font-size: 7px;
         font-weight: 700;
         color: #475569;
-    }
-    .inner-subtexto {
+    }}
+    .inner-subtexto {{
         font-size: 6.5px;
         color: #94a3b8;
         line-height: 1.1;
-    }
-    .inner-docente {
+    }}
+    .inner-docente {{
         font-size: 7.5px;
         font-weight: 600;
         color: #334155;
@@ -352,8 +361,8 @@ def generar_horario_html(persona_id, periodo_id, datos_horario):
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-    }
-    .celda-libre {
+    }}
+    .celda-libre {{
         border-radius: 10px;
         border: 1px dashed #cbd5e1;
         background: #ffffff;
@@ -362,22 +371,33 @@ def generar_horario_html(persona_id, periodo_id, datos_horario):
         display: flex;
         align-items: center;
         justify-content: center;
-    }
-    .texto-libre {
+    }}
+    .texto-libre {{
         font-size: 8px;
         font-weight: 700;
         letter-spacing: 0.12em;
         text-transform: uppercase;
         color: #cbd5e1;
-    }
-    .doc-footer {
+    }}
+    .vacio-box {{
+        grid-column: 1 / -1;
+        background: #ffffff;
+        border: 1px dashed #cbd5e1;
+        border-radius: 12px;
+        padding: 36px 20px;
+        text-align: center;
+        color: #64748b;
+        font-size: 11px;
+        font-weight: 600;
+    }}
+    .doc-footer {{
         display: flex;
         justify-content: space-between;
         align-items: center;
         margin-top: 5px;
         font-size: 6.5px;
         color: #94a3b8;
-    }
+    }}
     """
 
     html_parts = []
@@ -416,58 +436,65 @@ def generar_horario_html(persona_id, periodo_id, datos_horario):
         """)
 
     # Grid Rows
-    for turn_idx, (ini, fin) in enumerate(horas_ordenadas, 1):
-        html_parts.append(f"""
-        <div class="turno-cell">
-            <div class="turno-tag">TURNO CLASE {turn_idx}</div>
-            <div class="turno-tipo">- ASINCRONA</div>
-            <div class="turno-hora-inicio">{ini}</div>
-            <div class="turno-hora-fin">a {fin}</div>
+    if not horas_ordenadas:
+        html_parts.append("""
+        <div class="vacio-box">
+            Sin clases programadas para este periodo académico lectivo.
         </div>
         """)
-        for d_idx, _ in dias_info:
-            clases_en_turno = [c for c in clases_por_dia[d_idx] if c.get('inicio') == ini and c.get('fin') == fin]
-            if clases_en_turno:
-                c = clases_en_turno[0]
-                nom = c.get('nombre', '')
-                col_raw = c.get('color', '')
-                area, color_oficial, ico_key = resolver_materia(nom, col_raw)
-                svg_icon = ICONS_SVG.get(ico_key, ICONS_SVG['book'])
-                es_en_vivo = bool(c.get('zoom_join_url'))
-                badge_texto = 'En vivo' if es_en_vivo else 'Clase grabada'
-                badge_icon = ICONS_SVG['video'] if es_en_vivo else ICONS_SVG['play-triangle']
-                
-                prof = c.get('profesor') or 'Docente titular'
-                doc_icon = ICONS_SVG['doc']
-                
-                nom_titulo = ' '.join(p.capitalize() for p in nom.split())
-                prof_titulo = ' '.join(p.capitalize() for p in prof.split())
-                
-                html_parts.append(f"""
-                <div class="clase-card" style="--accent-color: {color_oficial}; --bg-pastel: color-mix(in srgb, {color_oficial} 18%, #ffffff); --borde-color: color-mix(in srgb, {color_oficial} 34%, #ffffff);">
-                    <div class="clase-top">
-                        <div class="clase-ico-squircle">{svg_icon}</div>
-                        <div class="clase-meta">
-                            <div class="clase-area">{area}</div>
-                            <div class="clase-title-row">
-                                <div class="clase-nombre">{nom_titulo}</div>
-                                <div class="clase-badge">{badge_icon} {badge_texto}</div>
+    else:
+        for turn_idx, (ini, fin) in enumerate(horas_ordenadas, 1):
+            html_parts.append(f"""
+            <div class="turno-cell">
+                <div class="turno-tag">TURNO CLASE {turn_idx}</div>
+                <div class="turno-tipo">- ASINCRONA</div>
+                <div class="turno-hora-inicio">{ini}</div>
+                <div class="turno-hora-fin">a {fin}</div>
+            </div>
+            """)
+            for d_idx, _ in dias_info:
+                clases_en_turno = [c for c in clases_por_dia[d_idx] if c.get('inicio') == ini and c.get('fin') == fin]
+                if clases_en_turno:
+                    c = clases_en_turno[0]
+                    nom = c.get('nombre', '')
+                    col_raw = c.get('color', '')
+                    area, color_oficial, ico_key = resolver_materia(nom, col_raw)
+                    svg_icon = ICONS_SVG.get(ico_key, ICONS_SVG['book'])
+                    es_en_vivo = bool(c.get('zoom_join_url'))
+                    badge_texto = 'En vivo' if es_en_vivo else 'Clase grabada'
+                    badge_icon = ICONS_SVG['video'] if es_en_vivo else ICONS_SVG['play-triangle']
+                    
+                    prof = c.get('profesor') or 'Docente titular'
+                    doc_icon = ICONS_SVG['doc']
+                    
+                    nom_titulo = ' '.join(p.capitalize() for p in nom.split())
+                    prof_titulo = ' '.join(p.capitalize() for p in prof.split())
+                    
+                    html_parts.append(f"""
+                    <div class="clase-card" style="--accent-color: {color_oficial}; --bg-pastel: color-mix(in srgb, {color_oficial} 18%, #ffffff); --borde-color: color-mix(in srgb, {color_oficial} 34%, #ffffff);">
+                        <div class="clase-top">
+                            <div class="clase-ico-squircle">{svg_icon}</div>
+                            <div class="clase-meta">
+                                <div class="clase-area">{area}</div>
+                                <div class="clase-title-row">
+                                    <div class="clase-nombre">{nom_titulo}</div>
+                                    <div class="clase-badge">{badge_icon} {badge_texto}</div>
+                                </div>
                             </div>
                         </div>
+                        <div class="clase-inner">
+                            <div class="inner-modalidad">{doc_icon} Clase grabada</div>
+                            <div class="inner-subtexto">Clase grabada pendiente</div>
+                            <div class="inner-docente">{prof_titulo}</div>
+                        </div>
                     </div>
-                    <div class="clase-inner">
-                        <div class="inner-modalidad">{doc_icon} Clase grabada</div>
-                        <div class="inner-subtexto">Clase grabada pendiente</div>
-                        <div class="inner-docente">{prof_titulo}</div>
+                    """)
+                else:
+                    html_parts.append("""
+                    <div class="celda-libre">
+                        <span class="texto-libre">LIBRE</span>
                     </div>
-                </div>
-                """)
-            else:
-                html_parts.append("""
-                <div class="celda-libre">
-                    <span class="texto-libre">LIBRE</span>
-                </div>
-                """)
+                    """)
 
     html_parts.append('</div>') # end tabla-grid
 
@@ -589,7 +616,7 @@ def generar_horario_pdf_reportlab_fallback(persona_id, periodo_id, datos_horario
                 texto_celda = (
                     f"<font size='6' color='{col_oficial}'><b>{area}</b></font><br/>"
                     f"<font size='8' color='#0F172A'><b>{c.get('nombre', '').title()}</b></font><br/>"
-                    f"<font size='6' color='{col_oficial}'><b>[ Clase grabada ]</b></font><br/>"
+                    f"<font size='6' color='{col_oficial}'><b>[ Clase grabada ]</b></font><br/>\""
                     f"<font size='6.5' color='#334155'>{c.get('profesor', '').title()}</font>"
                 )
                 cell_style = ParagraphStyle(
