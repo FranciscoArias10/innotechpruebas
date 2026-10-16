@@ -489,8 +489,10 @@ def guardar_respuesta_intento(persona_id, intento_id, pregunta_id, opcion_ids=No
 def terminar_intento_cuestionario(persona_id, intento_id):
     """
     Finaliza el intento de cuestionario, computa automaticamente la nota
-    en base a las respuestas correctas de la base de datos y la deja registrada.
+    en base a las respuestas correctas de la base de datos (tanto de opcion multiple
+    como de verdadero y falso) y la deja registrada.
     """
+    import json
     intento = _query_one("""
         SELECT i.id, i.cuestionario_id, i.fecha_inicio, c.notamaxima
         FROM ctr_intentocuestionario i
@@ -523,46 +525,56 @@ def terminar_intento_cuestionario(persona_id, intento_id):
     with connection.cursor() as cursor:
         for p in preguntas:
             p_id = p['pregunta_id']
+            cp_id = p['item_id']
             peso = float(p['peso'] or 1.0)
 
-            opciones_correctas = _query_all("""
-                SELECT id, respuesta 
-                FROM ctr_respuestaopcion 
-                WHERE pregunta_id = %s AND es_correcta = TRUE AND status = TRUE
-            """, [p_id])
-            ids_correctas = {o['id'] for o in opciones_correctas}
-
+            # Buscar respuesta del estudiante (tanto por cp_id como por p_id)
             resp_est = _query_one("""
                 SELECT id, respuesta_verdadero_falso, respuesta_corta 
                 FROM ctr_respuestaintento 
-                WHERE intento_id = %s AND pregunta_cuestionario_id = %s AND status = TRUE
-            """, [intento_id, p_id])
+                WHERE intento_id = %s AND (pregunta_cuestionario_id = %s OR pregunta_cuestionario_id = %s) AND status = TRUE
+            """, [intento_id, cp_id, p_id])
 
             es_correcta = False
             puntos_ganados = 0.0
 
+            tipo_raw = (p['tipo_nombre'] or '').lower()
+
             if resp_est:
                 r_id = resp_est['id']
-                import json
-                sel_ops = _query_all("SELECT origenrespuestaopcion_id FROM ctr_respuestaintento_opciones_seleccionadas WHERE respuestaintento_id = %s", [r_id])
-                ids_seleccionadas = {s['origenrespuestaopcion_id'] for s in sel_ops}
-                if not ids_seleccionadas and resp_est['respuesta_corta']:
-                    try:
-                        parsed = json.loads(resp_est['respuesta_corta'])
-                        if isinstance(parsed, list):
-                            ids_seleccionadas = set(parsed)
-                        elif isinstance(parsed, int):
-                            ids_seleccionadas = {parsed}
-                    except Exception:
-                        pass
 
-                tipo_raw = (p['tipo_nombre'] or '').lower()
+                # Caso 1: Pregunta de Verdadero / Falso
                 if 'verdadero' in tipo_raw or 'falso' in tipo_raw:
-                    txt_correcta = opciones_correctas[0]['respuesta'].strip().lower() if opciones_correctas else 'verdadero'
-                    resp_vf = (resp_est['respuesta_verdadero_falso'] or '').strip().lower()
+                    vf_row = _query_one("""
+                        SELECT respuesta FROM ctr_respuestaverdaderofalso 
+                        WHERE pregunta_id = %s AND status = TRUE
+                    """, [p_id])
+                    txt_correcta = (vf_row['respuesta'] if vf_row else 'VERDADERO').strip().upper()
+                    resp_vf = (resp_est['respuesta_verdadero_falso'] or resp_est['respuesta_corta'] or '').strip().upper()
                     if resp_vf and resp_vf in txt_correcta:
                         es_correcta = True
+
+                # Caso 2: Pregunta de Opción Múltiple
                 else:
+                    opciones_correctas = _query_all("""
+                        SELECT id, respuesta 
+                        FROM ctr_respuestaopcion 
+                        WHERE pregunta_id = %s AND es_correcta = TRUE AND status = TRUE
+                    """, [p_id])
+                    ids_correctas = {o['id'] for o in opciones_correctas}
+
+                    sel_ops = _query_all("SELECT origenrespuestaopcion_id FROM ctr_respuestaintento_opciones_seleccionadas WHERE respuestaintento_id = %s", [r_id])
+                    ids_seleccionadas = {s['origenrespuestaopcion_id'] for s in sel_ops}
+                    if not ids_seleccionadas and resp_est['respuesta_corta']:
+                        try:
+                            parsed = json.loads(resp_est['respuesta_corta'])
+                            if isinstance(parsed, list):
+                                ids_seleccionadas = set(parsed)
+                            elif isinstance(parsed, int):
+                                ids_seleccionadas = {parsed}
+                        except Exception:
+                            pass
+
                     if ids_correctas and ids_seleccionadas == ids_correctas:
                         es_correcta = True
 
@@ -616,8 +628,10 @@ def terminar_intento_cuestionario(persona_id, intento_id):
 
 def obtener_revision_intento(persona_id, intento_id):
     """
-    Retorna la revision detallada de un intento completado.
+    Retorna la revision detallada de un intento completado con retroalimentacion
+    pedagogica, desglose de opciones y puntaje obtenido.
     """
+    import json
     intento = _query_one("""
         SELECT 
             i.id, i.cuestionario_id, i.estado, i.fecha_inicio, i.fecha_fin,
@@ -663,7 +677,10 @@ def obtener_revision_intento(persona_id, intento_id):
         FROM ctr_respuestaintento
         WHERE intento_id = %s AND status = TRUE
     """
-    respuestas_map = {r['pregunta_cuestionario_id']: r for r in _query_all(sql_resp, [intento_id])}
+    respuestas_list = _query_all(sql_resp, [intento_id])
+    respuestas_map = {}
+    for r in respuestas_list:
+        respuestas_map[r['pregunta_cuestionario_id']] = r
 
     sql_sel = """
         SELECT ro.respuestaintento_id, ro.origenrespuestaopcion_id
@@ -678,16 +695,12 @@ def obtener_revision_intento(persona_id, intento_id):
     preguntas_revision = []
     for idx, p in enumerate(preguntas_raw):
         p_id = p['pregunta_id']
+        cp_id = p['item_id']
         peso = float(p['puntuacion'] or 1.0)
+        tipo_raw = (p['tipo_nombre'] or '').lower()
 
-        opciones_raw = _query_all("""
-            SELECT id, respuesta, es_correcta, COALESCE(retroalimentacion, '') as retroalimentacion
-            FROM ctr_respuestaopcion
-            WHERE pregunta_id = %s AND status = TRUE
-            ORDER BY id ASC
-        """, [p_id])
-
-        resp_est = respuestas_map.get(p_id)
+        # Buscar respuesta tanto por cp_id como por p_id
+        resp_est = respuestas_map.get(cp_id) or respuestas_map.get(p_id)
         seleccionadas = []
         texto_dado = ''
         vf_dado = None
@@ -702,6 +715,54 @@ def obtener_revision_intento(persona_id, intento_id):
             es_correcta = bool(resp_est['es_correcta'])
             puntos_obtenidos = float(resp_est['puntuacion_obtenida'] or 0.0)
 
+            if not seleccionadas and texto_dado:
+                try:
+                    parsed = json.loads(texto_dado)
+                    if isinstance(parsed, list):
+                        seleccionadas = parsed
+                    elif isinstance(parsed, int):
+                        seleccionadas = [parsed]
+                except Exception:
+                    pass
+
+        # Si es verdadero / falso
+        if 'verdadero' in tipo_raw or 'falso' in tipo_raw:
+            vf_row = _query_one("SELECT respuesta FROM ctr_respuestaverdaderofalso WHERE pregunta_id = %s AND status = TRUE", [p_id])
+            val_corr = (vf_row['respuesta'] if vf_row else 'VERDADERO').strip().title()
+            opciones_finales = [
+                {
+                    'id': 1,
+                    'texto': 'Verdadero',
+                    'es_correcta': val_corr == 'Verdadero',
+                    'fue_seleccionada': (vf_dado or '').strip().title() == 'Verdadero',
+                    'retroalimentacion': '',
+                },
+                {
+                    'id': 2,
+                    'texto': 'Falso',
+                    'es_correcta': val_corr == 'Falso',
+                    'fue_seleccionada': (vf_dado or '').strip().title() == 'Falso',
+                    'retroalimentacion': '',
+                }
+            ]
+        else:
+            opciones_raw = _query_all("""
+                SELECT id, respuesta, es_correcta, COALESCE(retroalimentacion, '') as retroalimentacion
+                FROM ctr_respuestaopcion
+                WHERE pregunta_id = %s AND status = TRUE
+                ORDER BY id ASC
+            """, [p_id])
+            opciones_finales = [
+                {
+                    'id': o['id'],
+                    'texto': o['respuesta'],
+                    'es_correcta': bool(o['es_correcta']),
+                    'fue_seleccionada': o['id'] in seleccionadas,
+                    'retroalimentacion': o['retroalimentacion'],
+                }
+                for o in opciones_raw
+            ]
+
         preguntas_revision.append({
             'pregunta_id': p_id,
             'numero': idx + 1,
@@ -711,16 +772,7 @@ def obtener_revision_intento(persona_id, intento_id):
             'puntos_obtenidos': puntos_obtenidos,
             'es_correcta': es_correcta,
             'retroalimentacion': p['retroalimentacion_general'] or '',
-            'opciones': [
-                {
-                    'id': o['id'],
-                    'texto': o['respuesta'],
-                    'es_correcta': bool(o['es_correcta']),
-                    'fue_seleccionada': o['id'] in seleccionadas,
-                    'retroalimentacion': o['retroalimentacion'],
-                }
-                for o in opciones_raw
-            ],
+            'opciones': opciones_finales,
             'respuesta_estudiante': {
                 'opcion_ids': seleccionadas,
                 'texto': texto_dado,
