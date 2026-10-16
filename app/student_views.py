@@ -20,6 +20,9 @@ from app.student_ports import (
     obtener_calificaciones_estudiante,
     obtener_detalle_notas_materia,
     obtener_asistencia_estudiante,
+    obtener_lecciones_estudiante,
+    registrar_justificacion_asistencia,
+    obtener_justificaciones_estudiante,
     obtener_horario_estudiante,
 )
 
@@ -253,6 +256,152 @@ class StudentAttendanceView(APIView):
         respuesta.set_message('Reporte de asistencia recuperado con exito.')
         respuesta.set_data(datos)
         respuesta.set_status(status.HTTP_200_OK)
+        return respuesta.to_dict()
+
+
+class StudentAttendanceLessonsView(APIView):
+    """
+    GET /api/v1.0.0/movil/student/attendance/lessons/
+    Retorna el listado de lecciones con estado de asistencia por fecha.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        respuesta = RespuestaApi()
+        periodo_id = _obtener_periodo_id(request, respuesta)
+        if periodo_id is None:
+            return respuesta.to_dict()
+
+        est = _obtener_estudiante_actual(request, respuesta)
+        if est is None:
+            return respuesta.to_dict()
+
+        ma_id = request.GET.get('materia_asignada_id') or request.GET.get('subject_id')
+        try:
+            datos = obtener_lecciones_estudiante(est['persona_id'], periodo_id, ma_id)
+        except Exception:
+            respuesta.set_success(False)
+            respuesta.set_message('Ocurrio un error al obtener las lecciones de asistencia.')
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return respuesta.to_dict()
+
+        respuesta.set_success(True)
+        respuesta.set_message('Lecciones de asistencia recuperadas con exito.')
+        respuesta.set_data(datos)
+        respuesta.set_status(status.HTTP_200_OK)
+        return respuesta.to_dict()
+
+
+class StudentJustificationView(APIView):
+    """
+    GET /api/v1.0.0/movil/student/attendance/justifications/
+    POST /api/v1.0.0/movil/student/attendance/justifications/
+    POST /api/v1.0.0/movil/chat-ia/widget/justificar
+
+    Permite consultar y registrar solicitudes de justificacion de faltas.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        respuesta = RespuestaApi()
+        periodo_id = _obtener_periodo_id(request, respuesta)
+        if periodo_id is None:
+            return respuesta.to_dict()
+
+        est = _obtener_estudiante_actual(request, respuesta)
+        if est is None:
+            return respuesta.to_dict()
+
+        try:
+            datos = obtener_justificaciones_estudiante(est['persona_id'], periodo_id)
+        except Exception:
+            respuesta.set_success(False)
+            respuesta.set_message('Ocurrio un error al consultar las justificaciones.')
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return respuesta.to_dict()
+
+        respuesta.set_success(True)
+        respuesta.set_message('Justificaciones recuperadas con exito.')
+        respuesta.set_data(datos)
+        respuesta.set_status(status.HTTP_200_OK)
+        return respuesta.to_dict()
+
+    def post(self, request):
+        import datetime
+        respuesta = RespuestaApi()
+        periodo_id = _obtener_periodo_id(request, respuesta)
+        if periodo_id is None:
+            return respuesta.to_dict()
+
+        est = _obtener_estudiante_actual(request, respuesta)
+        if est is None:
+            return respuesta.to_dict()
+
+        data = request.data
+        fecha_inicio = data.get('fechaclaseinicio') or data.get('fecha_inicio')
+        fecha_fin = data.get('fechaclasefin') or data.get('fecha_fin') or fecha_inicio
+        motivo = (data.get('motivo') or data.get('observacion') or '').strip()
+        materia_ids = data.get('materia_asignada_ids') or data.get('materia_asignada_id')
+
+        if not fecha_inicio:
+            respuesta.set_success(False)
+            respuesta.set_message('La fecha de inicio de la inasistencia es obligatoria.')
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+            return respuesta.to_dict()
+
+        if not motivo:
+            respuesta.set_success(False)
+            respuesta.set_message('El motivo o justificacion de la falta es obligatorio.')
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+            return respuesta.to_dict()
+
+        if isinstance(materia_ids, str):
+            if ',' in materia_ids:
+                materia_ids = [m.strip() for m in materia_ids.split(',') if m.strip()]
+            else:
+                materia_ids = [materia_ids.strip()]
+        elif isinstance(materia_ids, int):
+            materia_ids = [materia_ids]
+        elif not materia_ids:
+            materia_ids = []
+
+        ruta_archivo = ''
+        archivo = request.FILES.get('archivo') or request.FILES.get('file')
+        if archivo:
+            import os
+            from django.core.files.storage import default_storage
+            from django.utils.text import get_valid_filename
+            nombre_limpio = get_valid_filename(archivo.name)
+            subruta = os.path.join('justificaciones', f"{est['persona_id']}_{int(datetime.datetime.now().timestamp())}_{nombre_limpio}")
+            ruta_guardada = default_storage.save(subruta, archivo)
+            ruta_archivo = ruta_guardada
+
+        try:
+            datos = registrar_justificacion_asistencia(
+                persona_id=est['persona_id'],
+                periodo_id=periodo_id,
+                materia_asignada_ids=materia_ids,
+                fecha_inicio=fecha_inicio,
+                fecha_fin=fecha_fin,
+                motivo=motivo,
+                ruta_archivo=ruta_archivo,
+                usuario_id=request.user.id
+            )
+        except LookupError as e:
+            respuesta.set_success(False)
+            respuesta.set_message(str(e))
+            respuesta.set_status(status.HTTP_404_NOT_FOUND)
+            return respuesta.to_dict()
+        except Exception as e:
+            respuesta.set_success(False)
+            respuesta.set_message(f'Error al registrar la justificacion: {str(e)}')
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return respuesta.to_dict()
+
+        respuesta.set_success(True)
+        respuesta.set_message('Solicitud de justificacion enviada exitosamente.')
+        respuesta.set_data(datos)
+        respuesta.set_status(status.HTTP_201_CREATED)
         return respuesta.to_dict()
 
 

@@ -278,15 +278,21 @@ def obtener_asistencia_estudiante(persona_id, periodo_id):
     """
     sql = """
         SELECT 
+            ma.id as materia_asignada_id,
             ma.id as cronograma_id,
+            asig.id as subject_id,
             asig.nombre as name,
+            COALESCE(NULLIF(asig.color, ''), '#0073bc') as color,
             COALESCE(ma.asist_presente, 0) as attended_hours,
             COALESCE(ma.falta_justificada_dia, 0) as justified_hours,
             COALESCE(ma.asist_pendiente, 0) as pending_hours,
             COALESCE(ma.falta_injustificada_dia, 0) as absent_hours,
             COALESCE(ma.asist_total, 0) as total_hours,
-            ROUND(CAST(COALESCE(ma.asistenciafinal, 0) AS numeric), 1) as percentage
+            ROUND(CAST(COALESCE(ma.asistenciafinal, 0) AS numeric), 1) as percentage,
+            TRIM(COALESCE(p.nombres, '') || ' ' || COALESCE(p.apellido_1, '')) as student_name,
+            per.nombre as period_name
         FROM ctr_estudiante e
+        JOIN ctr_persona p ON p.id = e.persona_id
         JOIN ctr_matricula m ON m.estudiante_id = e.id AND m.status = TRUE
         JOIN ctr_periodolectivo pl ON pl.id = m.periodolectivo_id
         JOIN ctr_periodo per ON per.id = pl.periodo_id
@@ -303,9 +309,15 @@ def obtener_asistencia_estudiante(persona_id, periodo_id):
         raise LookupError("No se encontraron registros de asistencia para este periodo.")
 
     subjects = []
+    student_name = rows[0]['student_name'] if rows else ''
+    period_name = rows[0]['period_name'] if rows else ''
+
     for r in rows:
         pct = float(r['percentage'])
         total_h = r['total_hours'] if r['total_hours'] > 0 else (r['attended_hours'] + r['absent_hours'])
+        if pct == 0.0 and total_h > 0 and (r['attended_hours'] + r['justified_hours']) > 0:
+            pct = round(((r['attended_hours'] + r['justified_hours']) / total_h) * 100, 1)
+
         if pct >= 90:
             st = 'excelente'
         elif pct >= 75:
@@ -314,8 +326,11 @@ def obtener_asistencia_estudiante(persona_id, periodo_id):
             st = 'riesgo'
 
         subjects.append({
+            'materia_asignada_id': r['materia_asignada_id'],
             'cronograma_id': r['cronograma_id'],
+            'subject_id': r['subject_id'],
             'name': r['name'],
+            'color': r['color'],
             'by_hours': {
                 'attended': r['attended_hours'],
                 'justified': r['justified_hours'],
@@ -335,7 +350,181 @@ def obtener_asistencia_estudiante(persona_id, periodo_id):
             'status': st
         })
 
-    return {'subjects': subjects}
+    return {
+        'student': {
+            'id': persona_id,
+            'full_name': student_name
+        },
+        'period': {
+            'id': periodo_id,
+            'name': period_name
+        },
+        'subjects': subjects
+    }
+
+
+def obtener_lecciones_estudiante(persona_id, periodo_id, materia_asignada_id=None):
+    """
+    Lista detallada de lecciones y registros de asistencia por fecha para el estudiante.
+    """
+    params = [persona_id, periodo_id]
+    filtro_ma = ""
+    if materia_asignada_id:
+        filtro_ma = " AND ma.id = %s "
+        params.append(materia_asignada_id)
+
+    sql = f"""
+        SELECT 
+            l.id as id,
+            al.id as asistencia_id,
+            ma.id as materia_asignada_id,
+            asig.nombre as materia_nombre,
+            COALESCE(NULLIF(asig.color, ''), '#0073bc') as materia_color,
+            TO_CHAR(l.fecha, 'YYYY-MM-DD') as fecha,
+            COALESCE(TO_CHAR(l.horaentrada, 'HH24:MI'), TO_CHAR(t.comienza, 'HH24:MI'), '08:00') as hora_inicio,
+            COALESCE(TO_CHAR(l.horasalida, 'HH24:MI'), TO_CHAR(t.termina, 'HH24:MI'), '08:45') as hora_fin,
+            al.asistio,
+            COALESCE(l.observacion, '') as observacion,
+            TRIM(COALESCE(prof_p.nombres, '') || ' ' || COALESCE(prof_p.apellido_1, '')) as profesor,
+            CASE 
+                WHEN jad.id IS NOT NULL THEN 'justificada'
+                WHEN al.asistio = FALSE THEN 'falta'
+                WHEN l.observacion ILIKE '%%atraso%%' THEN 'atraso'
+                ELSE 'presente'
+            END as estado,
+            (jad.id IS NOT NULL) as justificada
+        FROM ctr_asistencialeccion al
+        JOIN ctr_leccion l ON l.id = al.leccion_id AND l.status = TRUE
+        JOIN ctr_clase cl ON cl.id = l.clase_id AND cl.status = TRUE
+        JOIN ctr_materiaasignada ma ON ma.id = al.materiaasignada_id AND ma.status = TRUE
+        JOIN ctr_materia mat ON mat.id = ma.materia_id
+        JOIN ctr_asignaturamallacurricular amc ON amc.id = mat.asignaturamalla_id
+        JOIN ctr_asignatura asig ON asig.id = amc.asignatura_id
+        JOIN ctr_nivelmatriculdo nm ON nm.id = ma.nivelmatriculado_id AND nm.status = TRUE
+        JOIN ctr_matricula m ON m.id = nm.matricula_id AND m.status = TRUE
+        JOIN ctr_periodolectivo pl ON pl.id = m.periodolectivo_id
+        JOIN ctr_periodo per ON per.id = pl.periodo_id
+        JOIN ctr_estudiante e ON e.id = m.estudiante_id
+        LEFT JOIN ctr_turno t ON t.id = cl.turno_id
+        LEFT JOIN ctr_profesor prof ON prof.id = cl.profesor_id
+        LEFT JOIN ctr_persona prof_p ON prof_p.id = prof.persona_id
+        LEFT JOIN ctr_justificacionasistenciadetalle jad ON jad.asistencialeccion_id = al.id AND jad.status = TRUE
+        WHERE e.persona_id = %s AND per.id = %s {filtro_ma}
+        ORDER BY l.fecha DESC, hora_inicio DESC
+    """
+    rows = _query_all(sql, params)
+    return {'lessons': rows}
+
+
+def registrar_justificacion_asistencia(persona_id, periodo_id, materia_asignada_ids, fecha_inicio, fecha_fin, motivo, ruta_archivo='', usuario_id=None):
+    """
+    Registra una solicitud de justificación de inasistencia en ctr_justificacionasistencia.
+    """
+    sql_mat = """
+        SELECT m.id as matricula_id 
+        FROM ctr_estudiante e
+        JOIN ctr_matricula m ON m.estudiante_id = e.id AND m.status = TRUE
+        JOIN ctr_periodolectivo pl ON pl.id = m.periodolectivo_id
+        WHERE e.persona_id = %s AND pl.periodo_id = %s
+        LIMIT 1
+    """
+    m_row = _query_one(sql_mat, [persona_id, periodo_id])
+    if not m_row:
+        raise LookupError("No se encontró matrícula activa para este periodo.")
+
+    matricula_id = m_row['matricula_id']
+
+    from django.db import connection
+    with connection.cursor() as cur:
+        cur.execute("""
+            INSERT INTO ctr_justificacionasistencia (
+                fecha_creacion, fecha_modificacion, status, fechaclaseinicio, fechaclasefin,
+                observacion, archivo, fecha, estado, matricula_id, persona_id, usuario_creacion_id
+            ) VALUES (
+                NOW(), NOW(), TRUE, %s, %s, %s, %s, NOW(), 1, %s, %s, %s
+            ) RETURNING id
+        """, [fecha_inicio, fecha_fin, motivo, ruta_archivo, matricula_id, persona_id, usuario_id])
+        justificacion_id = cur.fetchone()[0]
+
+        if isinstance(materia_asignada_ids, (int, str)):
+            materia_asignada_ids = [materia_asignada_ids]
+
+        for ma_id in (materia_asignada_ids or []):
+            try:
+                ma_int = int(ma_id)
+            except (ValueError, TypeError):
+                continue
+            cur.execute("""
+                INSERT INTO ctr_justificacionasistenciama (
+                    fecha_creacion, fecha_modificacion, status, justificacionasistencia_id, materiaasignada_id, usuario_creacion_id
+                ) VALUES (
+                    NOW(), NOW(), TRUE, %s, %s, %s
+                ) RETURNING id
+            """, [justificacion_id, ma_int, usuario_id])
+            just_ma_id = cur.fetchone()[0]
+
+            cur.execute("""
+                SELECT al.id FROM ctr_asistencialeccion al
+                JOIN ctr_leccion l ON l.id = al.leccion_id
+                WHERE al.materiaasignada_id = %s 
+                  AND l.fecha >= %s AND l.fecha <= %s
+                  AND al.asistio = FALSE
+            """, [ma_int, fecha_inicio, fecha_fin])
+            faltas = cur.fetchall()
+            for f in faltas:
+                al_id = f[0]
+                cur.execute("""
+                    INSERT INTO ctr_justificacionasistenciadetalle (
+                        fecha_creacion, fecha_modificacion, status, asistio, asistencialeccion_id, justificacionamateriaasignada_id, usuario_creacion_id
+                    ) VALUES (
+                        NOW(), NOW(), TRUE, TRUE, %s, %s, %s
+                    )
+                """, [al_id, just_ma_id, usuario_id])
+
+    return {
+        'id': justificacion_id,
+        'estado': 1,
+        'estado_texto': 'Pendiente de revisión',
+        'fechaclaseinicio': str(fecha_inicio),
+        'fechaclasefin': str(fecha_fin),
+        'motivo': motivo,
+        'archivo': ruta_archivo
+    }
+
+
+def obtener_justificaciones_estudiante(persona_id, periodo_id):
+    """
+    Retorna el historial de solicitudes de justificación del estudiante en el periodo.
+    """
+    sql = """
+        SELECT 
+            ja.id,
+            TO_CHAR(ja.fecha, 'YYYY-MM-DD HH24:MI') as fecha_solicitud,
+            TO_CHAR(ja.fechaclaseinicio, 'YYYY-MM-DD') as fechaclaseinicio,
+            TO_CHAR(ja.fechaclasefin, 'YYYY-MM-DD') as fechaclasefin,
+            ja.observacion as motivo,
+            COALESCE(ja.archivo, '') as archivo,
+            ja.estado,
+            CASE 
+                WHEN ja.estado = 3 THEN 'Aprobada'
+                WHEN ja.estado IN (2, 4) THEN 'Rechazada'
+                ELSE 'Pendiente de revisión'
+            END as estado_texto,
+            COALESCE(string_agg(DISTINCT asig.nombre, ', '), 'Varias materias') as materias
+        FROM ctr_justificacionasistencia ja
+        JOIN ctr_matricula m ON m.id = ja.matricula_id
+        JOIN ctr_periodolectivo pl ON pl.id = m.periodolectivo_id
+        LEFT JOIN ctr_justificacionasistenciama jma ON jma.justificacionasistencia_id = ja.id AND jma.status = TRUE
+        LEFT JOIN ctr_materiaasignada ma ON ma.id = jma.materiaasignada_id
+        LEFT JOIN ctr_materia mat ON mat.id = ma.materia_id
+        LEFT JOIN ctr_asignaturamallacurricular amc ON amc.id = mat.asignaturamalla_id
+        LEFT JOIN ctr_asignatura asig ON asig.id = amc.asignatura_id
+        WHERE ja.persona_id = %s AND pl.periodo_id = %s AND ja.status = TRUE
+        GROUP BY ja.id, ja.fecha, ja.fechaclaseinicio, ja.fechaclasefin, ja.observacion, ja.archivo, ja.estado
+        ORDER BY ja.fecha DESC
+    """
+    rows = _query_all(sql, [persona_id, periodo_id])
+    return {'justifications': rows}
 
 
 def obtener_horario_estudiante(persona_id, periodo_id):
