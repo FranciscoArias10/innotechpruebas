@@ -39,7 +39,7 @@ def obtener_detalle_cuestionario(persona_id, periodo_id, cuestionario_id):
         SELECT 
             c.id,
             c.actividad_id,
-            COALESCE(c.limit, 30) as tiempo_limite,
+            COALESCE(c."limit", 30) as tiempo_limite,
             COALESCE(c.unidad_tiempo, 1) as unidad_tiempo,
             COALESCE(c.usa_limit_tiempo, TRUE) as usa_limit_tiempo,
             COALESCE(c.num_intento, 1) as num_intento,
@@ -77,7 +77,7 @@ def obtener_detalle_cuestionario(persona_id, periodo_id, cuestionario_id):
         sql_fallback = """
             SELECT 
                 c.id, c.actividad_id,
-                COALESCE(c.limit, 30) as tiempo_limite,
+                COALESCE(c."limit", 30) as tiempo_limite,
                 COALESCE(c.unidad_tiempo, 1) as unidad_tiempo,
                 COALESCE(c.usa_limit_tiempo, TRUE) as usa_limit_tiempo,
                 COALESCE(c.num_intento, 1) as num_intento,
@@ -217,7 +217,7 @@ def iniciar_o_retomar_intento_cuestionario(persona_id, periodo_id, cuestionario_
         raise LookupError("Estudiante no matriculado o inactivo.")
     estudiante_id = est['id']
 
-    cuestionario = _query_one("SELECT id, limit, num_intento, notamaxima FROM ctr_cuestionario WHERE id = %s AND status = TRUE", [cuestionario_id])
+    cuestionario = _query_one('SELECT id, "limit", num_intento, notamaxima FROM ctr_cuestionario WHERE id = %s AND status = TRUE', [cuestionario_id])
     if not cuestionario:
         raise LookupError("Cuestionario no encontrado.")
 
@@ -264,8 +264,8 @@ def iniciar_o_retomar_intento_cuestionario(persona_id, periodo_id, cuestionario_
     with connection.cursor() as cursor:
         cursor.execute("""
             INSERT INTO ctr_intentocuestionario 
-            (fecha_creacion, status, estado, fecha_inicio, tiempo_utilizado, puntuacion_total, nota_final, cuestionario_id, estudiante_id, es_calificado)
-            VALUES (NOW(), TRUE, 'en_curso', NOW(), 0, 0, 0, %s, %s, FALSE)
+            (fecha_creacion, status, estado, fecha_inicio, tiempo_utilizado, puntuacion_total, nota_final, respuestas_correctas, respuestas_incorrectas, cuestionario_id, estudiante_id, es_calificado)
+            VALUES (NOW(), TRUE, 'en_curso', NOW(), 0, 0, 0, 0, 0, %s, %s, FALSE)
             RETURNING id, fecha_inicio
         """, [cuestionario_id, estudiante_id])
         res = cursor.fetchone()
@@ -290,7 +290,7 @@ def obtener_preguntas_intento(persona_id, intento_id):
     y cualquier respuesta previamente guardada.
     """
     intento = _query_one("""
-        SELECT i.id, i.cuestionario_id, i.estado, i.fecha_inicio, c.limit
+        SELECT i.id, i.cuestionario_id, i.estado, i.fecha_inicio, c."limit"
         FROM ctr_intentocuestionario i
         JOIN ctr_cuestionario c ON i.cuestionario_id = c.id
         JOIN ctr_estudiante e ON i.estudiante_id = e.id
@@ -375,12 +375,23 @@ def obtener_preguntas_intento(persona_id, intento_id):
         vf_guardado = None
 
         if resp_guardada:
+            import json
             r_id = resp_guardada['respuesta_id']
             seleccionadas = opciones_sel_map.get(r_id, [])
             texto_guardado = resp_guardada['respuesta_corta'] or ''
+            if not seleccionadas and texto_guardado:
+                try:
+                    parsed = json.loads(texto_guardado)
+                    if isinstance(parsed, list):
+                        seleccionadas = parsed
+                    elif isinstance(parsed, int):
+                        seleccionadas = [parsed]
+                except Exception:
+                    pass
             vf_guardado = resp_guardada['respuesta_verdadero_falso']
 
         preguntas_lista.append({
+            'id': p_id,
             'item_id': p['item_id'],
             'pregunta_id': p_id,
             'numero': idx + 1,
@@ -411,9 +422,12 @@ def obtener_preguntas_intento(persona_id, intento_id):
 def guardar_respuesta_intento(persona_id, intento_id, pregunta_id, opcion_ids=None, texto=None, verdadero_falso=None):
     """
     Guarda de forma atomica y persistente la respuesta de una pregunta.
+    Almacena tanto en la estructura relacional como en respuesta_corta serializada
+    para maxima resiliencia ante restricciones de FKs historicas.
     """
+    import json
     intento = _query_one("""
-        SELECT i.id, i.estado, i.fecha_inicio, c.limit
+        SELECT i.id, i.cuestionario_id, i.estado, i.fecha_inicio, c."limit"
         FROM ctr_intentocuestionario i
         JOIN ctr_cuestionario c ON i.cuestionario_id = c.id
         JOIN ctr_estudiante e ON i.estudiante_id = e.id
@@ -422,10 +436,16 @@ def guardar_respuesta_intento(persona_id, intento_id, pregunta_id, opcion_ids=No
     if not intento or intento['estado'] == 'finalizado':
         raise PermissionError("El intento ya no se encuentra en curso.")
 
+    c_id = intento['cuestionario_id']
+    cp = _query_one("SELECT id FROM ctr_cuestionariopregunta WHERE cuestionario_id = %s AND pregunta_id = %s AND status = TRUE", [c_id, pregunta_id])
+    cp_id = cp['id'] if cp else pregunta_id
+
     existente = _query_one("""
         SELECT id FROM ctr_respuestaintento 
-        WHERE intento_id = %s AND pregunta_cuestionario_id = %s AND status = TRUE
-    """, [intento_id, pregunta_id])
+        WHERE intento_id = %s AND (pregunta_cuestionario_id = %s OR pregunta_cuestionario_id = %s) AND status = TRUE
+    """, [intento_id, cp_id, pregunta_id])
+
+    texto_guardar = texto if texto else (json.dumps(opcion_ids) if opcion_ids else '')
 
     with connection.cursor() as cursor:
         if existente:
@@ -436,24 +456,27 @@ def guardar_respuesta_intento(persona_id, intento_id, pregunta_id, opcion_ids=No
                     respuesta_corta = %s,
                     fecha_modificacion = NOW()
                 WHERE id = %s
-            """, [verdadero_falso, texto, r_id])
+            """, [verdadero_falso, texto_guardar, r_id])
         else:
             cursor.execute("""
                 INSERT INTO ctr_respuestaintento
                 (fecha_creacion, status, orden, respuesta_verdadero_falso, respuesta_corta, puntuacion_obtenida, es_correcta, tiempo_respuesta, intento_id, pregunta_cuestionario_id)
                 VALUES (NOW(), TRUE, 1, %s, %s, 0, FALSE, 0, %s, %s)
                 RETURNING id
-            """, [verdadero_falso, texto, intento_id, pregunta_id])
+            """, [verdadero_falso, texto_guardar, intento_id, cp_id])
             r_id = cursor.fetchone()[0]
 
-        cursor.execute("DELETE FROM ctr_respuestaintento_opciones_seleccionadas WHERE respuestaintento_id = %s", [r_id])
-        if opcion_ids:
-            for op_id in opcion_ids:
-                cursor.execute("""
-                    INSERT INTO ctr_respuestaintento_opciones_seleccionadas
-                    (respuestaintento_id, origenrespuestaopcion_id)
-                    VALUES (%s, %s)
-                """, [r_id, op_id])
+        try:
+            cursor.execute("DELETE FROM ctr_respuestaintento_opciones_seleccionadas WHERE respuestaintento_id = %s", [r_id])
+            if opcion_ids:
+                for op_id in opcion_ids:
+                    cursor.execute("""
+                        INSERT INTO ctr_respuestaintento_opciones_seleccionadas
+                        (respuestaintento_id, origenrespuestaopcion_id)
+                        VALUES (%s, %s)
+                    """, [r_id, op_id])
+        except Exception:
+            pass
 
     return {
         'guardado': True,
@@ -520,8 +543,18 @@ def terminar_intento_cuestionario(persona_id, intento_id):
 
             if resp_est:
                 r_id = resp_est['id']
+                import json
                 sel_ops = _query_all("SELECT origenrespuestaopcion_id FROM ctr_respuestaintento_opciones_seleccionadas WHERE respuestaintento_id = %s", [r_id])
                 ids_seleccionadas = {s['origenrespuestaopcion_id'] for s in sel_ops}
+                if not ids_seleccionadas and resp_est['respuesta_corta']:
+                    try:
+                        parsed = json.loads(resp_est['respuesta_corta'])
+                        if isinstance(parsed, list):
+                            ids_seleccionadas = set(parsed)
+                        elif isinstance(parsed, int):
+                            ids_seleccionadas = {parsed}
+                    except Exception:
+                        pass
 
                 tipo_raw = (p['tipo_nombre'] or '').lower()
                 if 'verdadero' in tipo_raw or 'falso' in tipo_raw:
