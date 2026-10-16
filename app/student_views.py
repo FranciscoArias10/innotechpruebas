@@ -834,3 +834,187 @@ class StudentCalendarView(APIView):
             resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return resp.to_dict()
+
+
+from app.student_ports import (
+    obtener_avisos_estudiante,
+    obtener_detalle_aviso,
+    marcar_aviso_leido,
+    marcar_todos_avisos_leidos,
+    obtener_conteo_avisos_no_leidos,
+    enviar_push_a_usuario,
+)
+
+
+class StudentNoticesView(APIView):
+    """
+    GET /api/v1.0.0/movil/student/notices/
+    Retorna la bandeja de avisos, comunicados y noticias del estudiante.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        resp = RespuestaApi()
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        try:
+            limite = int(request.GET.get('limit', 50))
+            data = obtener_avisos_estudiante(est['persona_id'], limite=limite)
+            resp.set_success(True)
+            resp.set_message('Bandeja de avisos recuperada con éxito.')
+            resp.set_data(data)
+            resp.set_status(status.HTTP_200_OK)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message('Error al consultar la bandeja de avisos.')
+            resp.set_errors({'error': [str(e)]})
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()
+
+
+class StudentNoticeDetailView(APIView):
+    """
+    GET /api/v1.0.0/movil/student/notices/<int:correo_id>/
+    Retorna el detalle de un aviso y lo marca como leído.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, correo_id):
+        resp = RespuestaApi()
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        try:
+            data = obtener_detalle_aviso(est['persona_id'], correo_id)
+            resp.set_success(True)
+            resp.set_message('Detalle de aviso recuperado.')
+            resp.set_data(data)
+            resp.set_status(status.HTTP_200_OK)
+        except LookupError as le:
+            resp.set_success(False)
+            resp.set_message(str(le))
+            resp.set_status(status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message('Error al recuperar el aviso.')
+            resp.set_errors({'error': [str(e)]})
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()
+
+
+class StudentNoticeMarkReadView(APIView):
+    """
+    POST /api/v1.0.0/movil/student/notices/<int:correo_id>/read/
+    Marca un aviso individual como leído.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, correo_id):
+        resp = RespuestaApi()
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        try:
+            ok = marcar_aviso_leido(est['persona_id'], correo_id)
+            resp.set_success(True)
+            resp.set_message('Aviso marcado como leído.')
+            resp.set_data({'updated': ok, 'correo_id': correo_id, 'leido': True})
+            resp.set_status(status.HTTP_200_OK)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message('Error al actualizar el estado del aviso.')
+            resp.set_errors({'error': [str(e)]})
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()
+
+
+class StudentNoticeMarkAllReadView(APIView):
+    """
+    POST /api/v1.0.0/movil/student/notices/mark-all-read/
+    Marca todos los comunicados no leídos del estudiante como leídos.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        resp = RespuestaApi()
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        try:
+            total_actualizados = marcar_todos_avisos_leidos(est['persona_id'])
+            resp.set_success(True)
+            resp.set_message(f'{total_actualizados} avisos marcados como leídos.')
+            resp.set_data({'count': total_actualizados})
+            resp.set_status(status.HTTP_200_OK)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message('Error al marcar avisos como leídos.')
+            resp.set_errors({'error': [str(e)]})
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()
+
+
+class StudentNoticeUnreadCountView(APIView):
+    """
+    GET /api/v1.0.0/movil/student/notices/unread-count/
+    GET /api/v1.0.0/movil/avisos-mensajeria/
+    Retorna el total de avisos no leídos para badges y notificaciones.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        resp = RespuestaApi()
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        try:
+            total = obtener_conteo_avisos_no_leidos(est['persona_id'])
+            resp.set_success(True)
+            resp.set_message('Conteo de no leídos obtenido.')
+            resp.set_data({'unread_count': total})
+            resp.set_status(status.HTTP_200_OK)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message('Error al obtener el conteo de no leídos.')
+            resp.set_errors({'error': [str(e)]})
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()
+
+
+class StudentTestPushView(APIView):
+    """
+    POST /api/v1.0.0/movil/student/notices/test-push/
+    Permite enviar una notificación push de prueba al teléfono del usuario autenticado.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        resp = RespuestaApi()
+        titulo = request.data.get('titulo') or 'Comunicado institucional UNIEBEC'
+        cuerpo = request.data.get('cuerpo') or 'Tienes un nuevo aviso disponible en tu bandeja.'
+        datos = request.data.get('datos') or {'pantalla': 'Avisos'}
+
+        try:
+            enviados = enviar_push_a_usuario(request.user.id, titulo, cuerpo, datos)
+            resp.set_success(True)
+            resp.set_message(f'Notificación enviada a {enviados} dispositivos registrados.')
+            resp.set_data({'dispositivos_notificados': enviados})
+            resp.set_status(status.HTTP_200_OK)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message('Error al enviar la notificación push.')
+            resp.set_errors({'error': [str(e)]})
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()

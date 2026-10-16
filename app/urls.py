@@ -32,6 +32,12 @@ from app.student_views import (
     StudentResourceOpenView,
     StudentActivityDetailView,
     StudentCalendarView,
+    StudentNoticesView,
+    StudentNoticeDetailView,
+    StudentNoticeMarkReadView,
+    StudentNoticeMarkAllReadView,
+    StudentNoticeUnreadCountView,
+    StudentTestPushView,
 )
 
 urlpatterns = [
@@ -66,6 +72,15 @@ urlpatterns = [
     path('student/activity/<int:actividad_id>/', StudentActivityDetailView.as_view(), name='movil-student-activity-detail'),
     path('student/calendar/', StudentCalendarView.as_view(), name='movil-student-calendar'),
     path('student/activities/pending/', StudentCalendarView.as_view(), name='movil-student-activities-pending'),
+
+    # Tarea 09: Avisos, comunicados y notificaciones
+    path('student/notices/', StudentNoticesView.as_view(), name='movil-student-notices'),
+    path('student/notices/<int:correo_id>/', StudentNoticeDetailView.as_view(), name='movil-student-notice-detail'),
+    path('student/notices/<int:correo_id>/read/', StudentNoticeMarkReadView.as_view(), name='movil-student-notice-read'),
+    path('student/notices/mark-all-read/', StudentNoticeMarkAllReadView.as_view(), name='movil-student-notice-mark-all-read'),
+    path('student/notices/unread-count/', StudentNoticeUnreadCountView.as_view(), name='movil-student-notice-unread-count'),
+    path('student/notices/test-push/', StudentTestPushView.as_view(), name='movil-student-notice-test-push'),
+    path('avisos-mensajeria/', StudentNoticeUnreadCountView.as_view(), name='movil-avisos-mensajeria'),
 
     # Endpoints del representante
     path('representative/students/<int:student_id>/grades/', RepresentativeStudentGradesView.as_view(), name='movil-representative-student-grades'),

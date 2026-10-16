@@ -1276,3 +1276,232 @@ def obtener_actividades_pendientes(persona_id, periodo_id):
         'total': len(actividades),
         'pending_count': len([a for a in actividades if not a['entregada'] and not a['vencida']])
     }
+
+
+def obtener_avisos_estudiante(persona_id, limite=50):
+    """
+    Obtiene la lista de comunicados y correos dirigidos al estudiante desde ctr_correopara y ctr_correo,
+    asi como las noticias institucionales activas en ctr_noticia.
+    """
+    import re
+
+    sql_correos = """
+        SELECT 
+            cp.id AS correopara_id,
+            c.id AS correo_id,
+            c.asunto,
+            c.contenido,
+            c.fecha,
+            cp.estado,
+            c.origen,
+            p.id AS remitente_persona_id,
+            p.nombres AS remitente_nombres,
+            p.apellido_1 AS remitente_ap1,
+            p.apellido_2 AS remitente_ap2,
+            p.foto AS remitente_foto
+        FROM ctr_correopara cp
+        JOIN ctr_correo c ON c.id = cp.correo_id
+        LEFT JOIN ctr_persona p ON p.id = c.persona_id
+        WHERE cp.persona_id = %s
+        ORDER BY c.fecha DESC
+        LIMIT %s
+    """
+    rows = _query_all(sql_correos, [persona_id, limite])
+
+    avisos = []
+    for r in rows:
+        asunto = r['asunto'] or 'Comunicado sin asunto'
+        contenido = r['contenido'] or ''
+        leido = (r['estado'] == 2)
+
+        # Determinar remitente
+        if r['remitente_nombres']:
+            remitente = f"{r['remitente_nombres']} {r['remitente_ap1'] or ''}".strip()
+        elif r['origen'] == 'BALCON':
+            remitente = 'Balcón de Servicios Académicos'
+        elif r['origen'] == 'DECE':
+            remitente = 'Departamento DECE'
+        elif r['origen'] == 'SECRETARIA':
+            remitente = 'Secretaría General UNIEBEC'
+        elif r['origen'] == 'RECTORADO':
+            remitente = 'Rectorado Institucional'
+        else:
+            remitente = 'Unidad Educativa Bolivariana'
+
+        # Determinar tipo / categoria
+        asunto_l = asunto.lower()
+        if 'tarea' in asunto_l or 'actividad' in asunto_l:
+            tipo = 'tarea'
+        elif 'nota' in asunto_l or 'calificaci' in asunto_l:
+            tipo = 'calificacion'
+        elif 'asistencia' in asunto_l or 'falta' in asunto_l:
+            tipo = 'asistencia'
+        elif 'dece' in asunto_l or r['origen'] == 'DECE':
+            tipo = 'dece'
+        elif r['origen'] in ('BALCON', 'SECRETARIA', 'RECTORADO'):
+            tipo = 'institucional'
+        elif r['origen'] == 'DOCENTE':
+            tipo = 'docente'
+        else:
+            tipo = 'comunicado'
+
+        # Extraer enlaces y adjuntos del contenido
+        adjuntos = []
+        links = re.findall(r'<a\s+(?:[^>]*?\s+)?href="([^"]+)"[^>]*>(.*?)</a>', contenido, re.IGNORECASE)
+        for href, texto in links:
+            nombre_limpio = re.sub(r'<[^>]+>', '', texto).strip() or 'Archivo adjunto'
+            es_pdf = '.pdf' in href.lower()
+            es_img = any(ext in href.lower() for ext in ['.jpg', '.jpeg', '.png', '.webp'])
+            adjuntos.append({
+                'url': href,
+                'nombre': nombre_limpio,
+                'tipo': 'pdf' if es_pdf else ('imagen' if es_img else 'enlace')
+            })
+
+        # Limpiar etiquetas HTML para vista previa en lista
+        texto_plano = re.sub(r'<br\s*/?>', chr(10), contenido)
+        texto_plano = re.sub(r'</p>', chr(10), texto_plano)
+        texto_plano = re.sub(r'<[^>]+>', '', texto_plano)
+        texto_plano = re.sub(r'\s+', ' ', texto_plano).strip()
+
+        fecha_val = r['fecha']
+        fecha_str = fecha_val.strftime('%Y-%m-%d %H:%M') if fecha_val else ''
+
+        avisos.append({
+            'id': r['correopara_id'],
+            'correo_id': r['correo_id'],
+            'asunto': asunto,
+            'contenido_html': contenido,
+            'resumen': texto_plano[:160] + ('...' if len(texto_plano) > 160 else ''),
+            'fecha': fecha_str,
+            'fecha_iso': fecha_val.isoformat() if fecha_val else None,
+            'leido': leido,
+            'estado': r['estado'],
+            'tipo': tipo,
+            'origen': r['origen'] or 'INSTITUCION',
+            'remitente': remitente,
+            'remitente_foto': r['remitente_foto'] or '',
+            'adjuntos': adjuntos,
+        })
+
+    # Noticias institucionales de ctr_noticia
+    sql_noticias = """
+        SELECT id, nombre, descripcion, imagen_principal, imagen_secundaria, inicio, fin
+        FROM ctr_noticia
+        WHERE activo = TRUE
+        ORDER BY inicio DESC
+        LIMIT 10
+    """
+    noticias = _query_all(sql_noticias)
+    for n in noticias:
+        avisos.append({
+            'id': 100000 + n['id'],
+            'correo_id': None,
+            'asunto': n['nombre'],
+            'contenido_html': n['descripcion'] or '',
+            'resumen': (n['descripcion'] or '')[:160],
+            'fecha': str(n['inicio']) if n['inicio'] else '',
+            'fecha_iso': str(n['inicio']) if n['inicio'] else None,
+            'leido': True,
+            'estado': 2,
+            'tipo': 'noticia',
+            'origen': 'NOTICIA',
+            'remitente': 'Dirección General',
+            'remitente_foto': '',
+            'adjuntos': [
+                {'url': n['imagen_principal'], 'nombre': 'Imagen institucional', 'tipo': 'imagen'}
+            ] if n.get('imagen_principal') else [],
+        })
+
+    return {
+        'notices': avisos,
+        'total': len(avisos),
+        'unread_count': len([a for a in avisos if not a['leido']])
+    }
+
+
+def obtener_detalle_aviso(persona_id, correo_id):
+    """
+    Retorna el detalle completo de un comunicado y lo marca como leido.
+    """
+    resumen = obtener_avisos_estudiante(persona_id, limite=100)
+    for aviso in resumen['notices']:
+        if aviso['correo_id'] == correo_id or aviso['id'] == correo_id:
+            marcar_aviso_leido(persona_id, correo_id)
+            aviso['leido'] = True
+            aviso['estado'] = 2
+            return aviso
+    raise LookupError(f"No se encontro el aviso con identificador {correo_id}")
+
+
+def marcar_aviso_leido(persona_id, correo_id):
+    """
+    Marca como leido un correo en ctr_correopara.
+    """
+    with connection.cursor() as c:
+        c.execute("""
+            UPDATE ctr_correopara
+            SET estado = 2, fecha_modificacion = NOW()
+            WHERE persona_id = %s AND (correo_id = %s OR id = %s)
+        """, [persona_id, correo_id, correo_id])
+        return c.rowcount > 0
+
+
+def marcar_todos_avisos_leidos(persona_id):
+    """
+    Marca todos los comunicados del estudiante como leidos.
+    """
+    with connection.cursor() as c:
+        c.execute("""
+            UPDATE ctr_correopara
+            SET estado = 2, fecha_modificacion = NOW()
+            WHERE persona_id = %s AND estado = 1
+        """, [persona_id])
+        return c.rowcount
+
+
+def obtener_conteo_avisos_no_leidos(persona_id):
+    """
+    Retorna la cantidad de comunicados no leidos para la campana y badge.
+    """
+    sql = "SELECT COUNT(*) AS total FROM ctr_correopara WHERE persona_id = %s AND estado = 1"
+    row = _query_one(sql, [persona_id])
+    return row['total'] if row else 0
+
+
+def enviar_push_a_usuario(usuario_id, titulo, cuerpo, datos=None):
+    """
+    Envia una notificacion push de Expo a todos los dispositivos activos registrados
+    para el usuario especificado.
+    """
+    from app.models import DispositivoRegistrado
+    import json
+    import urllib.request
+
+    dispositivos = DispositivoRegistrado.objects.filter(usuario_id=usuario_id, activo=True)
+    tokens = [d.token for d in dispositivos if d.token and d.token.startswith('ExponentPushToken')]
+    if not tokens:
+        return 0
+
+    mensajes = []
+    for t in tokens:
+        mensajes.append({
+            'to': t,
+            'sound': 'default',
+            'title': titulo,
+            'body': cuerpo,
+            'data': datos or {},
+        })
+
+    try:
+        req = urllib.request.Request(
+            'https://exp.host/--/api/v2/push/send',
+            data=json.dumps(mensajes).encode('utf-8'),
+            headers={'Content-Type': 'application/json', 'Accept': 'application/json'},
+            method='POST'
+        )
+        with urllib.request.urlopen(req, timeout=5) as response:
+            return len(mensajes)
+    except Exception as e:
+        print(f"Error enviando push expo: {e}")
+        return 0
