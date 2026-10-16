@@ -414,6 +414,9 @@ class PDFRenderer(BaseRenderer):
     render_style = 'binary'
 
     def render(self, data, accepted_media_type=None, renderer_context=None):
+        if isinstance(data, (dict, list)):
+            import json
+            return json.dumps(data).encode('utf-8')
         return data
 
 class StudentScheduleView(APIView):

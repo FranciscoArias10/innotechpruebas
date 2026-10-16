@@ -1,5 +1,7 @@
 import io
 import os
+import html
+import shutil
 import subprocess
 import tempfile
 import unicodedata
@@ -666,11 +668,13 @@ def generar_horario_pdf_reportlab_fallback(persona_id, periodo_id, datos_horario
             if clases_hora:
                 c = clases_hora[0]
                 area, col_oficial, _ = resolver_materia(c.get('nombre', ''), c.get('color', ''))
+                nom_materia = html.escape(c.get('nombre', '').title())
+                docente = html.escape((c.get('docente') or c.get('profesor') or 'Docente Asignado').title())
                 texto_celda = (
                     f"<font size='6' color='{col_oficial}'><b>{area}</b></font><br/>"
-                    f"<font size='8' color='#0F172A'><b>{c.get('nombre', '').title()}</b></font><br/>"
-                    f"<font size='6' color='{col_oficial}'><b>[ Clase grabada ]</b></font><br/>\""
-                    f"<font size='6.5' color='#334155'>{c.get('profesor', '').title()}</font>"
+                    f"<font size='8' color='#0F172A'><b>{nom_materia}</b></font><br/>"
+                    f"<font size='6' color='{col_oficial}'><b>[ Clase grabada ]</b></font><br/>"
+                    f"<font size='6.5' color='#334155'>{docente}</font>"
                 )
                 cell_style = ParagraphStyle(
                     f'Cell_{row_idx}_{col_idx}', parent=styles['Normal'],
@@ -689,8 +693,8 @@ def generar_horario_pdf_reportlab_fallback(persona_id, periodo_id, datos_horario
     return buffer.getvalue()
 
 def generar_horario_pdf(persona_id, periodo_id, datos_horario):
-    chromium_path = '/usr/bin/chromium'
-    if not os.path.exists(chromium_path):
+    chromium_path = shutil.which('chromium') or shutil.which('google-chrome') or shutil.which('chromium-browser') or ('/usr/bin/chromium' if os.path.exists('/usr/bin/chromium') else None)
+    if not (chromium_path and os.path.exists(chromium_path)):
         return generar_horario_pdf_reportlab_fallback(persona_id, periodo_id, datos_horario)
 
     try:
