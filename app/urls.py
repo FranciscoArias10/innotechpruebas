@@ -38,6 +38,12 @@ from app.student_views import (
     StudentNoticeMarkAllReadView,
     StudentNoticeUnreadCountView,
     StudentTestPushView,
+    StudentChatContactsView,
+    StudentChatConversationsView,
+    StudentChatConversationDetailView,
+    StudentChatMessagesView,
+    StudentChatReadView,
+    StudentChatTypingView,
 )
 
 urlpatterns = [
@@ -81,6 +87,15 @@ urlpatterns = [
     path('student/notices/unread-count/', StudentNoticeUnreadCountView.as_view(), name='movil-student-notice-unread-count'),
     path('student/notices/test-push/', StudentTestPushView.as_view(), name='movil-student-notice-test-push'),
     path('avisos-mensajeria/', StudentNoticeUnreadCountView.as_view(), name='movil-avisos-mensajeria'),
+
+    # Tarea 10: Chat con docentes y compañeros
+    path('chat/contacts/', StudentChatContactsView.as_view(), name='movil-chat-contacts'),
+    path('chat/conversations/', StudentChatConversationsView.as_view(), name='movil-chat-conversations'),
+    path('chat/conversations/create/', StudentChatConversationsView.as_view(), name='movil-chat-conversations-create'),
+    path('chat/conversations/<int:conversation_id>/', StudentChatConversationDetailView.as_view(), name='movil-chat-conversation-detail'),
+    path('chat/conversations/<int:conversation_id>/messages/', StudentChatMessagesView.as_view(), name='movil-chat-conversation-messages'),
+    path('chat/conversations/<int:conversation_id>/read/', StudentChatReadView.as_view(), name='movil-chat-conversation-read'),
+    path('chat/conversations/<int:conversation_id>/typing/', StudentChatTypingView.as_view(), name='movil-chat-conversation-typing'),
 
     # Endpoints del representante
     path('representative/students/<int:student_id>/grades/', RepresentativeStudentGradesView.as_view(), name='movil-representative-student-grades'),

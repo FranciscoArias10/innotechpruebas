@@ -1018,3 +1018,263 @@ class StudentTestPushView(APIView):
             resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return resp.to_dict()
+
+
+# ==============================================================================
+# FASE 2 / TAREA 10: VISTAS DE CHAT CON DOCENTES Y COMPAÑEROS
+# ==============================================================================
+
+from app.student_ports import (
+    obtener_contactos_chat,
+    obtener_conversaciones_chat,
+    crear_o_abrir_conversacion,
+    obtener_mensajes_conversacion,
+    enviar_mensaje_chat,
+    marcar_conversacion_leida,
+)
+
+
+class StudentChatContactsView(APIView):
+    """
+    GET /api/v1.0.0/chat/contacts/
+    Retorna la lista de contactos permitidos (docentes y compañeros de aula).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        resp = RespuestaApi()
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        try:
+            data = obtener_contactos_chat(est['persona_id'])
+            resp.set_success(True)
+            resp.set_message('Contactos recuperados con éxito.')
+            resp.set_data(data)
+            resp.set_status(status.HTTP_200_OK)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message('Error al obtener los contactos.')
+            resp.set_errors({'error': [str(e)]})
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()
+
+
+class StudentChatConversationsView(APIView):
+    """
+    GET /api/v1.0.0/chat/conversations/ -> Lista de conversaciones del usuario
+    POST /api/v1.0.0/chat/conversations/create/ -> Abrir o crear conversación con target_persona_id
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        resp = RespuestaApi()
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        try:
+            data = obtener_conversaciones_chat(est['persona_id'])
+            resp.set_success(True)
+            resp.set_message('Conversaciones obtenidas.')
+            resp.set_data(data)
+            resp.set_status(status.HTTP_200_OK)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message('Error al obtener conversaciones.')
+            resp.set_errors({'error': [str(e)]})
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()
+
+    def post(self, request):
+        resp = RespuestaApi()
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        target_id = request.data.get('target_persona_id') or request.data.get('destinatario_id')
+        if not target_id:
+            resp.set_success(False)
+            resp.set_message('El campo target_persona_id es obligatorio.')
+            resp.set_errors({'target_persona_id': ['Requerido']})
+            resp.set_status(status.HTTP_400_BAD_REQUEST)
+            return resp.to_dict()
+
+        mensaje_inicial = request.data.get('initial_message') or request.data.get('mensaje')
+
+        try:
+            data = crear_o_abrir_conversacion(est['persona_id'], int(target_id), mensaje_inicial)
+            resp.set_success(True)
+            resp.set_message('Conversación iniciada.')
+            resp.set_data(data)
+            resp.set_status(status.HTTP_201_CREATED)
+        except (LookupError, ValueError) as e:
+            resp.set_success(False)
+            resp.set_message(str(e))
+            resp.set_errors({'error': [str(e)]})
+            resp.set_status(status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message('Error al iniciar la conversación.')
+            resp.set_errors({'error': [str(e)]})
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()
+
+
+class StudentChatConversationDetailView(APIView):
+    """
+    GET /api/v1.0.0/chat/conversations/<id>/
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, conversation_id):
+        resp = RespuestaApi()
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        try:
+            data = obtener_mensajes_conversacion(est['persona_id'], int(conversation_id))
+            resp.set_success(True)
+            resp.set_message('Detalle de conversación recuperado.')
+            resp.set_data(data)
+            resp.set_status(status.HTTP_200_OK)
+        except PermissionError as e:
+            resp.set_success(False)
+            resp.set_message(str(e))
+            resp.set_errors({'error': [str(e)]})
+            resp.set_status(status.HTTP_403_FORBIDDEN)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message('Error al obtener la conversación.')
+            resp.set_errors({'error': [str(e)]})
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()
+
+
+class StudentChatMessagesView(APIView):
+    """
+    GET /api/v1.0.0/chat/conversations/<id>/messages/
+    POST /api/v1.0.0/chat/conversations/<id>/messages/
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, conversation_id):
+        resp = RespuestaApi()
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        limite = int(request.query_params.get('limit', 100))
+        antes_de_id = request.query_params.get('before_id')
+        if antes_de_id:
+            antes_de_id = int(antes_de_id)
+
+        try:
+            data = obtener_mensajes_conversacion(est['persona_id'], int(conversation_id), limite, antes_de_id)
+            resp.set_success(True)
+            resp.set_message('Mensajes recuperados.')
+            resp.set_data(data)
+            resp.set_status(status.HTTP_200_OK)
+        except PermissionError as e:
+            resp.set_success(False)
+            resp.set_message(str(e))
+            resp.set_errors({'error': [str(e)]})
+            resp.set_status(status.HTTP_403_FORBIDDEN)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message('Error al obtener mensajes.')
+            resp.set_errors({'error': [str(e)]})
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()
+
+    def post(self, request, conversation_id):
+        resp = RespuestaApi()
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        contenido = request.data.get('content') or request.data.get('contenido') or ''
+        tipo = request.data.get('type') or 'text'
+        adjuntos = request.data.get('attachments') or []
+
+        try:
+            data = enviar_mensaje_chat(
+                est['persona_id'],
+                request.user.id,
+                int(conversation_id),
+                contenido,
+                tipo,
+                adjuntos
+            )
+            resp.set_success(True)
+            resp.set_message('Mensaje enviado.')
+            resp.set_data(data)
+            resp.set_status(status.HTTP_201_CREATED)
+        except PermissionError as e:
+            resp.set_success(False)
+            resp.set_message(str(e))
+            resp.set_errors({'error': [str(e)]})
+            resp.set_status(status.HTTP_403_FORBIDDEN)
+        except ValueError as e:
+            resp.set_success(False)
+            resp.set_message(str(e))
+            resp.set_errors({'content': [str(e)]})
+            resp.set_status(status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message('Error al enviar el mensaje.')
+            resp.set_errors({'error': [str(e)]})
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()
+
+
+class StudentChatReadView(APIView):
+    """
+    POST /api/v1.0.0/chat/conversations/<id>/read/
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, conversation_id):
+        resp = RespuestaApi()
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        try:
+            marcar_conversacion_leida(est['persona_id'], int(conversation_id))
+            resp.set_success(True)
+            resp.set_message('Conversación marcada como leída.')
+            resp.set_data({'read': True, 'conversation_id': int(conversation_id)})
+            resp.set_status(status.HTTP_200_OK)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message('Error al marcar como leída.')
+            resp.set_errors({'error': [str(e)]})
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()
+
+
+class StudentChatTypingView(APIView):
+    """
+    POST /api/v1.0.0/chat/conversations/<id>/typing/
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, conversation_id):
+        resp = RespuestaApi()
+        is_typing = bool(request.data.get('is_typing', True))
+        resp.set_success(True)
+        resp.set_message('Estado de escritura registrado.')
+        resp.set_data({'conversation_id': int(conversation_id), 'is_typing': is_typing})
+        resp.set_status(status.HTTP_200_OK)
+        return resp.to_dict()
+

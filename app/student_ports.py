@@ -1505,3 +1505,404 @@ def enviar_push_a_usuario(usuario_id, titulo, cuerpo, datos=None):
     except Exception as e:
         print(f"Error enviando push expo: {e}")
         return 0
+
+
+# ==============================================================================
+# FASE 2 / TAREA 10: CHAT CON DOCENTES Y COMPAÑEROS
+# ==============================================================================
+
+def obtener_contactos_chat(persona_id, periodo_id=None):
+    """
+    Retorna los contactos autorizados para mensajería:
+    - Docentes de las asignaturas que cursa el estudiante.
+    - Compañeros de aula (mismo nivel, paralelo y periodo).
+    """
+    # 1. Docentes
+    sql_docentes = """
+        SELECT DISTINCT 
+            prof_p.id as persona_id,
+            TRIM(COALESCE(prof_p.nombres, '') || ' ' || COALESCE(prof_p.apellido_1, '') || ' ' || COALESCE(prof_p.apellido_2, '')) as nombre_completo,
+            COALESCE(prof_p.correo, '') as correo,
+            COALESCE(prof_p.foto, '') as foto,
+            asig.nombre as info,
+            'docente' as tipo
+        FROM ctr_estudiante e
+        JOIN ctr_matricula m ON m.estudiante_id = e.id AND m.status = TRUE
+        JOIN ctr_nivelmatriculdo nm ON nm.matricula_id = m.id AND nm.status = TRUE
+        JOIN ctr_materiaasignada ma ON ma.nivelmatriculado_id = nm.id AND ma.status = TRUE
+        JOIN ctr_materia mat ON mat.id = ma.materia_id
+        JOIN ctr_asignaturamallacurricular amc ON amc.id = mat.asignaturamalla_id
+        JOIN ctr_asignatura asig ON asig.id = amc.asignatura_id
+        JOIN ctr_profesormateria pm ON pm.materia_id = mat.id AND pm.status = TRUE
+        JOIN ctr_profesor prof ON prof.id = pm.profesor_id
+        JOIN ctr_persona prof_p ON prof_p.id = prof.persona_id
+        WHERE e.persona_id = %s
+        ORDER BY nombre_completo ASC
+    """
+    docentes = _query_all(sql_docentes, [persona_id])
+
+    # 2. Compañeros de aula
+    sql_companeros = """
+        SELECT DISTINCT
+            comp_p.id as persona_id,
+            TRIM(COALESCE(comp_p.nombres, '') || ' ' || COALESCE(comp_p.apellido_1, '') || ' ' || COALESCE(comp_p.apellido_2, '')) as nombre_completo,
+            COALESCE(comp_p.correo, '') as correo,
+            COALESCE(comp_p.foto, '') as foto,
+            COALESCE('Paralelo ' || par.nombre, 'Compañero de aula') as info,
+            'companero' as tipo
+        FROM ctr_estudiante e
+        JOIN ctr_matricula m ON m.estudiante_id = e.id AND m.status = TRUE
+        JOIN ctr_matricula comp_m ON comp_m.nivel_id = m.nivel_id AND comp_m.paralelo_id = m.paralelo_id AND comp_m.periodolectivo_id = m.periodolectivo_id AND comp_m.status = TRUE
+        JOIN ctr_estudiante comp_e ON comp_e.id = comp_m.estudiante_id
+        JOIN ctr_persona comp_p ON comp_p.id = comp_e.persona_id
+        LEFT JOIN ctr_paralelo par ON par.id = comp_m.paralelo_id
+        WHERE e.persona_id = %s AND comp_p.id != %s
+        ORDER BY nombre_completo ASC
+    """
+    companeros = _query_all(sql_companeros, [persona_id, persona_id])
+
+    # Unir todos los contactos
+    todos = docentes + companeros
+
+    return {
+        'total': len(todos),
+        'docentes': docentes,
+        'companeros': companeros,
+        'contacts': todos
+    }
+
+
+def obtener_conversaciones_chat(persona_id):
+    """
+    Retorna la lista de conversaciones activas del usuario con el último mensaje y no leídos.
+    """
+    sql = """
+        SELECT 
+            c.id,
+            c.type,
+            c.direct_key,
+            COALESCE(c.last_message_preview, '') as last_message_preview,
+            c.last_message_at,
+            c.last_message_sender_id,
+            other_p.id as other_id,
+            TRIM(COALESCE(other_p.nombres, '') || ' ' || COALESCE(other_p.apellido_1, '') || ' ' || COALESCE(other_p.apellido_2, '')) as other_name,
+            COALESCE(other_p.foto, '') as other_photo,
+            COALESCE(other_p.correo, '') as other_email,
+            COALESCE(other_part.role, 'member') as other_role,
+            (
+                SELECT COUNT(*) 
+                FROM chat_message m 
+                WHERE m.conversation_id = c.id 
+                  AND m.sender_id != %s 
+                  AND (my_part.last_read_at IS NULL OR m.created_at > my_part.last_read_at)
+                  AND m.is_deleted = FALSE
+            ) as unread_count
+        FROM chat_conversation c
+        JOIN chat_conversation_participant my_part ON my_part.conversation_id = c.id AND my_part.persona_id = %s AND my_part.is_active = TRUE
+        JOIN chat_conversation_participant other_part ON other_part.conversation_id = c.id AND other_part.persona_id != %s
+        JOIN ctr_persona other_p ON other_p.id = other_part.persona_id
+        ORDER BY c.last_message_at DESC NULLS LAST
+    """
+    rows = _query_all(sql, [persona_id, persona_id, persona_id])
+
+    items = []
+    total_no_leidos = 0
+    for r in rows:
+        unread = int(r.get('unread_count', 0))
+        total_no_leidos += unread
+        last_dt = r.get('last_message_at')
+        fecha_str = last_dt.strftime('%H:%M') if last_dt else ''
+        fecha_iso = last_dt.isoformat() if last_dt else ''
+
+        items.append({
+            'id': r['id'],
+            'type': r['type'],
+            'unread_count': unread,
+            'last_message': {
+                'content': r['last_message_preview'],
+                'sender_id': r['last_message_sender_id'],
+                'is_mine': (r['last_message_sender_id'] == persona_id),
+                'created_at': fecha_iso,
+                'hora': fecha_str,
+            },
+            'other_participant': {
+                'id': r['other_id'],
+                'persona_id': r['other_id'],
+                'name': r['other_name'],
+                'photo': r['other_photo'],
+                'email': r['other_email'],
+                'role': r['other_role'],
+                'tipo': 'docente' if r['other_role'] == 'teacher' else 'companero',
+            },
+            'updated_at': fecha_iso,
+        })
+
+    return {
+        'conversations': items,
+        'total': len(items),
+        'unread_count': total_no_leidos,
+    }
+
+
+def crear_o_abrir_conversacion(persona_id, destinatario_id, mensaje_inicial=None):
+    """
+    Abre la conversación existente con el destinatario o crea una nueva si no existe.
+    """
+    if int(persona_id) == int(destinatario_id):
+        raise ValueError("No puedes iniciar una conversación contigo mismo.")
+
+    # Verificar que el destinatario sea persona válida
+    dest = _query_one("SELECT id, nombres, apellido_1, apellido_2, correo, foto FROM ctr_persona WHERE id = %s", [destinatario_id])
+    if not dest:
+        raise LookupError("El usuario destinatario no existe.")
+
+    direct_key = f"{min(int(persona_id), int(destinatario_id))}_{max(int(persona_id), int(destinatario_id))}"
+
+    # Buscar conversación existente
+    conv = _query_one("SELECT id FROM chat_conversation WHERE direct_key = %s LIMIT 1", [direct_key])
+
+    if conv:
+        conv_id = conv['id']
+    else:
+        # Detectar rol del destinatario (docente o estudiante)
+        es_prof = _query_one("SELECT id FROM ctr_profesor WHERE persona_id = %s", [destinatario_id])
+        rol_dest = 'teacher' if es_prof else 'student'
+
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO chat_conversation (type, title, direct_key, created_at, updated_at, last_message_at)
+                VALUES ('direct', %s, %s, NOW(), NOW(), NOW())
+                RETURNING id
+            """, [f"Chat {dest['nombres']}", direct_key])
+            conv_id = cursor.fetchone()[0]
+
+            # Agregar ambos participantes
+            cursor.execute("""
+                INSERT INTO chat_conversation_participant (conversation_id, persona_id, role, joined_at, is_active, is_muted)
+                VALUES (%s, %s, 'student', NOW(), TRUE, FALSE),
+                       (%s, %s, %s, NOW(), TRUE, FALSE)
+            """, [conv_id, persona_id, conv_id, destinatario_id, rol_dest])
+
+    # Si hay mensaje inicial, enviarlo
+    if mensaje_inicial and str(mensaje_inicial).strip():
+        enviar_mensaje_chat(persona_id, None, conv_id, mensaje_inicial.strip())
+
+    return {
+        'id': conv_id,
+        'direct_key': direct_key,
+        'destinatario': {
+            'persona_id': dest['id'],
+            'nombre': f"{dest['nombres']} {dest.get('apellido_1', '')}".strip(),
+            'foto': dest.get('foto', ''),
+        }
+    }
+
+
+def obtener_mensajes_conversacion(persona_id, conversacion_id, limite=100, antes_de_id=None):
+    """
+    Retorna el historial de mensajes de la conversación y marca los mensajes como leídos.
+    """
+    # Verificar acceso
+    part = _query_one("""
+        SELECT id FROM chat_conversation_participant 
+        WHERE conversation_id = %s AND persona_id = %s AND is_active = TRUE
+    """, [conversacion_id, persona_id])
+    if not part:
+        raise PermissionError("No perteneces a esta conversación.")
+
+    params = [conversacion_id]
+    filtro_antes = ""
+    if antes_de_id:
+        filtro_antes = "AND m.id < %s"
+        params.append(antes_de_id)
+
+    params.append(limite)
+
+    sql_msgs = f"""
+        SELECT 
+            m.id,
+            m.type,
+            m.content,
+            m.created_at,
+            m.sender_id,
+            m.reply_to_id,
+            TRIM(COALESCE(p.nombres, '') || ' ' || COALESCE(p.apellido_1, '')) as sender_name,
+            COALESCE(p.foto, '') as sender_photo
+        FROM chat_message m
+        JOIN ctr_persona p ON p.id = m.sender_id
+        WHERE m.conversation_id = %s AND m.is_deleted = FALSE {filtro_antes}
+        ORDER BY m.created_at ASC
+        LIMIT %s
+    """
+    rows = _query_all(sql_msgs, params)
+
+    # Buscar adjuntos si los hay
+    msg_ids = [r['id'] for r in rows]
+    adjuntos_por_msg = {}
+    if msg_ids:
+        placeholders = ', '.join(['%s'] * len(msg_ids))
+        sql_adj = f"""
+            SELECT id, message_id, file, original_filename, mime_type, size_bytes
+            FROM chat_message_attachment
+            WHERE message_id IN ({placeholders})
+        """
+        adj_rows = _query_all(sql_adj, msg_ids)
+        for a in adj_rows:
+            adjuntos_por_msg.setdefault(a['message_id'], []).append({
+                'id': a['id'],
+                'url': a['file'],
+                'name': a['original_filename'],
+                'mime_type': a['mime_type'],
+                'size': a['size_bytes'],
+            })
+
+    mensajes = []
+    max_id = 0
+    for r in rows:
+        if r['id'] > max_id:
+            max_id = r['id']
+        dt = r['created_at']
+        mensajes.append({
+            'id': r['id'],
+            'type': r['type'],
+            'content': r['content'],
+            'created_at': dt.isoformat() if dt else '',
+            'hora': dt.strftime('%H:%M') if dt else '',
+            'sender_id': r['sender_id'],
+            'sender_name': r['sender_name'],
+            'sender_photo': r['sender_photo'],
+            'is_mine': (r['sender_id'] == persona_id),
+            'attachments': adjuntos_por_msg.get(r['id'], []),
+        })
+
+    # Marcar como leídos
+    if max_id > 0:
+        with connection.cursor() as c:
+            c.execute("""
+                UPDATE chat_conversation_participant 
+                SET last_read_at = NOW(), last_read_message_id = %s
+                WHERE conversation_id = %s AND persona_id = %s
+            """, [max_id, conversacion_id, persona_id])
+
+    return {
+        'conversation_id': conversacion_id,
+        'messages': mensajes,
+        'total': len(mensajes),
+    }
+
+
+def enviar_mensaje_chat(persona_id, usuario_id, conversacion_id, contenido, tipo='text', adjuntos=None):
+    """
+    Inserta un nuevo mensaje, actualiza la conversación y envía push al otro participante.
+    """
+    # Validar participante
+    part = _query_one("""
+        SELECT id FROM chat_conversation_participant 
+        WHERE conversation_id = %s AND persona_id = %s AND is_active = TRUE
+    """, [conversacion_id, persona_id])
+    if not part:
+        raise PermissionError("No perteneces a esta conversación.")
+
+    if not contenido and not adjuntos:
+        raise ValueError("El mensaje no puede estar vacío.")
+
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            INSERT INTO chat_message (conversation_id, sender_id, type, content, created_at, updated_at, is_deleted)
+            VALUES (%s, %s, %s, %s, NOW(), NOW(), FALSE)
+            RETURNING id, created_at
+        """, [conversacion_id, persona_id, tipo or 'text', (contenido or '').strip()])
+        row = cursor.fetchone()
+        msg_id, created_at = row[0], row[1]
+
+        # Guardar adjuntos si los hay
+        adj_resultado = []
+        if adjuntos and isinstance(adjuntos, list):
+            for adj in adjuntos:
+                cursor.execute("""
+                    INSERT INTO chat_message_attachment (message_id, file, original_filename, mime_type, size_bytes, created_at)
+                    VALUES (%s, %s, %s, %s, %s, NOW())
+                    RETURNING id
+                """, [
+                    msg_id,
+                    adj.get('url', ''),
+                    adj.get('name', 'adjunto'),
+                    adj.get('mime_type', 'application/octet-stream'),
+                    adj.get('size', 0)
+                ])
+                adj_id = cursor.fetchone()[0]
+                adj_resultado.append({
+                    'id': adj_id,
+                    'url': adj.get('url', ''),
+                    'name': adj.get('name', ''),
+                    'size': adj.get('size', 0),
+                })
+
+        # Actualizar conversación
+        vista_previa = (contenido or 'Archivo adjunto')[:90]
+        cursor.execute("""
+            UPDATE chat_conversation
+            SET last_message_at = NOW(),
+                last_message_preview = %s,
+                last_message_sender_id = %s,
+                updated_at = NOW()
+            WHERE id = %s
+        """, [vista_previa, persona_id, conversacion_id])
+
+        # Actualizar último leído para el remitente
+        cursor.execute("""
+            UPDATE chat_conversation_participant
+            SET last_read_at = NOW(), last_read_message_id = %s
+            WHERE conversation_id = %s AND persona_id = %s
+        """, [msg_id, conversacion_id, persona_id])
+
+    # Enviar push notification al destinatario
+    try:
+        otro = _query_one("""
+            SELECT p.id as persona_id, p.nombres, p.apellido_1, u.id as usuario_id
+            FROM chat_conversation_participant ccp
+            JOIN ctr_persona p ON p.id = ccp.persona_id
+            LEFT JOIN auth_user u ON (u.username = p.identificacion OR u.email = p.correo)
+            WHERE ccp.conversation_id = %s AND ccp.persona_id != %s
+            LIMIT 1
+        """, [conversacion_id, persona_id])
+
+        yo = _query_one("SELECT nombres, apellido_1 FROM ctr_persona WHERE id = %s", [persona_id])
+        remitente_nombre = f"{yo['nombres']} {yo.get('apellido_1', '')}".strip() if yo else 'Nuevo mensaje'
+
+        if otro and otro.get('usuario_id'):
+            enviar_push_a_usuario(
+                otro['usuario_id'],
+                f"Mensaje de {remitente_nombre}",
+                vista_previa,
+                {'pantalla': 'ChatConversacion', 'conversacionId': conversacion_id}
+            )
+    except Exception as e:
+        print(f"Push chat error: {e}")
+
+    return {
+        'id': msg_id,
+        'conversation_id': conversacion_id,
+        'content': contenido,
+        'type': tipo,
+        'created_at': created_at.isoformat() if created_at else '',
+        'hora': created_at.strftime('%H:%M') if created_at else '',
+        'sender_id': persona_id,
+        'is_mine': True,
+        'attachments': adj_resultado,
+    }
+
+
+def marcar_conversacion_leida(persona_id, conversacion_id):
+    """
+    Marca todos los mensajes de una conversación como leídos para el usuario.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            UPDATE chat_conversation_participant
+            SET last_read_at = NOW(),
+                last_read_message_id = COALESCE((SELECT MAX(id) FROM chat_message WHERE conversation_id = %s), 0)
+            WHERE conversation_id = %s AND persona_id = %s
+        """, [conversacion_id, conversacion_id, persona_id])
+    return True
+
