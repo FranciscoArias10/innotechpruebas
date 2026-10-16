@@ -168,4 +168,6 @@ Una vez restaurada la base, dentro de la carpeta del proyecto `sige-ube-api`:
    ```powershell
    python manage.py runserver
    ```
+   *O de forma aún más sencilla:* puedes hacer doble clic en el archivo **`iniciar.bat`** (o ejecutar `.\iniciar.bat` en PowerShell/CMD), el cual verifica PostgreSQL, activa el entorno y enciende el servidor automáticamente.
+
    El servidor quedará disponible en `http://127.0.0.1:8000/`.
