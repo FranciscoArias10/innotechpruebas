@@ -44,6 +44,9 @@ from app.student_views import (
     StudentChatMessagesView,
     StudentChatReadView,
     StudentChatTypingView,
+    StudentQuizDetailView,
+    StudentQuizAttemptQuestionsView,
+    StudentQuizAttemptReviewView,
 )
 
 urlpatterns = [
@@ -96,6 +99,14 @@ urlpatterns = [
     path('chat/conversations/<int:conversation_id>/messages/', StudentChatMessagesView.as_view(), name='movil-chat-conversation-messages'),
     path('chat/conversations/<int:conversation_id>/read/', StudentChatReadView.as_view(), name='movil-chat-conversation-read'),
     path('chat/conversations/<int:conversation_id>/typing/', StudentChatTypingView.as_view(), name='movil-chat-conversation-typing'),
+
+    # Tarea 11: Cuestionarios y evaluaciones en linea
+    path('student/quizzes/<int:cuestionario_id>/', StudentQuizDetailView.as_view(), name='movil-student-quiz-detail'),
+    path('student/quizzes/<int:cuestionario_id>/start/', StudentQuizDetailView.as_view(), name='movil-student-quiz-start'),
+    path('student/quizzes/attempts/<int:intento_id>/questions/', StudentQuizAttemptQuestionsView.as_view(), name='movil-student-quiz-attempt-questions'),
+    path('student/quizzes/attempts/<int:intento_id>/save-answer/', StudentQuizAttemptQuestionsView.as_view(), name='movil-student-quiz-attempt-save-answer'),
+    path('student/quizzes/attempts/<int:intento_id>/finish/', StudentQuizAttemptQuestionsView.as_view(), name='movil-student-quiz-attempt-finish'),
+    path('student/quizzes/attempts/<int:intento_id>/review/', StudentQuizAttemptReviewView.as_view(), name='movil-student-quiz-attempt-review'),
 
     # Endpoints del representante
     path('representative/students/<int:student_id>/grades/', RepresentativeStudentGradesView.as_view(), name='movil-representative-student-grades'),

@@ -1281,3 +1281,186 @@ class StudentChatTypingView(APIView):
         resp.set_status(status.HTTP_200_OK)
         return resp.to_dict()
 
+
+
+class StudentQuizDetailView(APIView):
+    """
+    GET  /api/v1.0.0/student/quizzes/<int:cuestionario_id>/
+    POST /api/v1.0.0/student/quizzes/<int:cuestionario_id>/start/
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, cuestionario_id):
+        resp = RespuestaApi()
+        periodo_id = _obtener_periodo_id(request, resp)
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        try:
+            from app.quiz_ports import obtener_detalle_cuestionario
+            data = obtener_detalle_cuestionario(est['persona_id'], periodo_id, int(cuestionario_id))
+            resp.set_success(True)
+            resp.set_message("Detalle de evaluacion recuperado con exito.")
+            resp.set_data(data)
+            resp.set_status(status.HTTP_200_OK)
+        except LookupError as e:
+            resp.set_success(False)
+            resp.set_message(str(e))
+            resp.set_status(status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message(f"Error al obtener cuestionario: {str(e)}")
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()
+
+    def post(self, request, cuestionario_id):
+        resp = RespuestaApi()
+        periodo_id = _obtener_periodo_id(request, resp)
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        try:
+            from app.quiz_ports import iniciar_o_retomar_intento_cuestionario
+            data = iniciar_o_retomar_intento_cuestionario(est['persona_id'], periodo_id, int(cuestionario_id))
+            resp.set_success(True)
+            resp.set_message("Intento de evaluacion iniciado correctamente." if not data.get('reanudado') else "Intento en curso reanudado con exito.")
+            resp.set_data(data)
+            resp.set_status(status.HTTP_200_OK)
+        except PermissionError as e:
+            resp.set_success(False)
+            resp.set_message(str(e))
+            resp.set_status(status.HTTP_403_FORBIDDEN)
+        except LookupError as e:
+            resp.set_success(False)
+            resp.set_message(str(e))
+            resp.set_status(status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message(f"Error al iniciar intento: {str(e)}")
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()
+
+
+class StudentQuizAttemptQuestionsView(APIView):
+    """
+    GET  /api/v1.0.0/student/quizzes/attempts/<int:intento_id>/questions/
+    POST /api/v1.0.0/student/quizzes/attempts/<int:intento_id>/save-answer/
+    POST /api/v1.0.0/student/quizzes/attempts/<int:intento_id>/finish/
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, intento_id):
+        resp = RespuestaApi()
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        try:
+            from app.quiz_ports import obtener_preguntas_intento
+            data = obtener_preguntas_intento(est['persona_id'], int(intento_id))
+            resp.set_success(True)
+            resp.set_message("Preguntas del cuestionario cargadas con exito.")
+            resp.set_data(data)
+            resp.set_status(status.HTTP_200_OK)
+        except LookupError as e:
+            resp.set_success(False)
+            resp.set_message(str(e))
+            resp.set_status(status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message(f"Error al cargar preguntas: {str(e)}")
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()
+
+    def post(self, request, intento_id):
+        resp = RespuestaApi()
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        path_str = request.path
+        if 'finish' in path_str:
+            try:
+                from app.quiz_ports import terminar_intento_cuestionario
+                data = terminar_intento_cuestionario(est['persona_id'], int(intento_id))
+                resp.set_success(True)
+                resp.set_message("Evaluacion finalizada y enviada con exito.")
+                resp.set_data(data)
+                resp.set_status(status.HTTP_200_OK)
+            except Exception as e:
+                resp.set_success(False)
+                resp.set_message(f"Error al finalizar intento: {str(e)}")
+                resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return resp.to_dict()
+
+        try:
+            from app.quiz_ports import guardar_respuesta_intento
+            pregunta_id = request.data.get('pregunta_id')
+            opcion_ids = request.data.get('opcion_ids', [])
+            texto = request.data.get('texto')
+            verdadero_falso = request.data.get('verdadero_falso')
+
+            if not pregunta_id:
+                resp.set_success(False)
+                resp.set_message("pregunta_id es requerido.")
+                resp.set_status(status.HTTP_400_BAD_REQUEST)
+                return resp.to_dict()
+
+            data = guardar_respuesta_intento(
+                est['persona_id'],
+                int(intento_id),
+                int(pregunta_id),
+                opcion_ids=opcion_ids,
+                texto=texto,
+                verdadero_falso=verdadero_falso
+            )
+            resp.set_success(True)
+            resp.set_message("Respuesta guardada con exito.")
+            resp.set_data(data)
+            resp.set_status(status.HTTP_200_OK)
+        except PermissionError as e:
+            resp.set_success(False)
+            resp.set_message(str(e))
+            resp.set_status(status.HTTP_403_FORBIDDEN)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message(f"Error al guardar respuesta: {str(e)}")
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()
+
+
+class StudentQuizAttemptReviewView(APIView):
+    """
+    GET /api/v1.0.0/student/quizzes/attempts/<int:intento_id>/review/
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, intento_id):
+        resp = RespuestaApi()
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        try:
+            from app.quiz_ports import obtener_revision_intento
+            data = obtener_revision_intento(est['persona_id'], int(intento_id))
+            resp.set_success(True)
+            resp.set_message("Revision de intento obtenida con exito.")
+            resp.set_data(data)
+            resp.set_status(status.HTTP_200_OK)
+        except LookupError as e:
+            resp.set_success(False)
+            resp.set_message(str(e))
+            resp.set_status(status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message(f"Error al obtener revision: {str(e)}")
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()

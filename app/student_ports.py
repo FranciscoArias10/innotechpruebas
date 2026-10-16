@@ -766,8 +766,10 @@ def obtener_planificacion_materia(persona_id, periodo_id, materia_asignada_id, s
             lk['abierto'] = lk['id'] in links_abiertos
 
         actividades = _query_all("""
-            SELECT act.id, act.nombre, act.descripcion, act.fechainicio, act.fechafin, act.archivo, act.cerrada 
+            SELECT act.id, act.nombre, act.descripcion, act.fechainicio, act.fechafin, act.archivo, act.cerrada,
+                   c.id as cuestionario_id
             FROM ctr_actividad act 
+            LEFT JOIN ctr_cuestionario c ON c.actividad_id = act.id AND c.status = TRUE
             WHERE act.planificacionsemanal_id = %s AND act.status = TRUE AND (act.oculto = FALSE OR act.oculto IS NULL)
         """, [pid])
         for act in actividades:
