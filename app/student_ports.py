@@ -1521,12 +1521,12 @@ def obtener_contactos_chat(persona_id, periodo_id=None):
     """
     # 1. Docentes
     sql_docentes = """
-        SELECT DISTINCT 
+        SELECT 
             prof_p.id as persona_id,
             TRIM(COALESCE(prof_p.nombres, '') || ' ' || COALESCE(prof_p.apellido_1, '') || ' ' || COALESCE(prof_p.apellido_2, '')) as nombre_completo,
             COALESCE(prof_p.correo, '') as correo,
             COALESCE(prof_p.foto, '') as foto,
-            asig.nombre as info,
+            STRING_AGG(DISTINCT asig.nombre, ', ') as info,
             'docente' as tipo
         FROM ctr_estudiante e
         JOIN ctr_matricula m ON m.estudiante_id = e.id AND m.status = TRUE
@@ -1539,6 +1539,7 @@ def obtener_contactos_chat(persona_id, periodo_id=None):
         JOIN ctr_profesor prof ON prof.id = pm.profesor_id
         JOIN ctr_persona prof_p ON prof_p.id = prof.persona_id
         WHERE e.persona_id = %s
+        GROUP BY prof_p.id, prof_p.nombres, prof_p.apellido_1, prof_p.apellido_2, prof_p.correo, prof_p.foto
         ORDER BY nombre_completo ASC
     """
     docentes = _query_all(sql_docentes, [persona_id])
@@ -1672,10 +1673,10 @@ def crear_o_abrir_conversacion(persona_id, destinatario_id, mensaje_inicial=None
 
         with connection.cursor() as cursor:
             cursor.execute("""
-                INSERT INTO chat_conversation (type, title, direct_key, created_at, updated_at, last_message_at)
-                VALUES ('direct', %s, %s, NOW(), NOW(), NOW())
+                INSERT INTO chat_conversation (type, title, direct_key, created_at, updated_at, last_message_at, last_message_preview)
+                VALUES ('direct', %s, %s, NOW(), NOW(), NOW(), %s)
                 RETURNING id
-            """, [f"Chat {dest['nombres']}", direct_key])
+            """, [f"Chat {dest['nombres']}", direct_key, (mensaje_inicial or '')[:90]])
             conv_id = cursor.fetchone()[0]
 
             # Agregar ambos participantes
@@ -1820,23 +1821,27 @@ def enviar_mensaje_chat(persona_id, usuario_id, conversacion_id, contenido, tipo
         # Guardar adjuntos si los hay
         adj_resultado = []
         if adjuntos and isinstance(adjuntos, list):
+            import json
             for adj in adjuntos:
+                meta = adj.get('metadata') if isinstance(adj.get('metadata'), dict) else {}
                 cursor.execute("""
-                    INSERT INTO chat_message_attachment (message_id, file, original_filename, mime_type, size_bytes, created_at)
-                    VALUES (%s, %s, %s, %s, %s, NOW())
+                    INSERT INTO chat_message_attachment (message_id, file, original_filename, mime_type, size_bytes, metadata, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, NOW())
                     RETURNING id
                 """, [
                     msg_id,
                     adj.get('url', ''),
                     adj.get('name', 'adjunto'),
                     adj.get('mime_type', 'application/octet-stream'),
-                    adj.get('size', 0)
+                    adj.get('size', 0),
+                    json.dumps(meta)
                 ])
                 adj_id = cursor.fetchone()[0]
                 adj_resultado.append({
                     'id': adj_id,
                     'url': adj.get('url', ''),
                     'name': adj.get('name', ''),
+                    'mime_type': adj.get('mime_type', 'application/octet-stream'),
                     'size': adj.get('size', 0),
                 })
 

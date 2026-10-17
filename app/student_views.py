@@ -1206,6 +1206,56 @@ class StudentChatMessagesView(APIView):
         contenido = request.data.get('content') or request.data.get('contenido') or ''
         tipo = request.data.get('type') or 'text'
         adjuntos = request.data.get('attachments') or []
+        if isinstance(adjuntos, str):
+            import json
+            try:
+                adjuntos = json.loads(adjuntos)
+            except Exception:
+                adjuntos = []
+
+        if not isinstance(adjuntos, list):
+            adjuntos = []
+
+        # Soporte para subida real de archivos (fotos, imágenes, PDFs)
+        archivos_subidos = (
+            request.FILES.getlist('file')
+            or request.FILES.getlist('files')
+            or request.FILES.getlist('archivo')
+            or request.FILES.getlist('attachments')
+        )
+        if not archivos_subidos and request.FILES.get('file'):
+            archivos_subidos = [request.FILES.get('file')]
+        elif not archivos_subidos and request.FILES.get('archivo'):
+            archivos_subidos = [request.FILES.get('archivo')]
+
+        if archivos_subidos:
+            import os
+            import datetime
+            from django.core.files.storage import default_storage
+            from django.utils.text import get_valid_filename
+            from django.conf import settings
+
+            if tipo == 'text':
+                tipo = 'file'
+
+            for f in archivos_subidos:
+                nombre_limpio = get_valid_filename(f.name)
+                timestamp = int(datetime.datetime.now().timestamp())
+                subruta = os.path.join('chat', f"{est['persona_id']}_{timestamp}_{nombre_limpio}")
+                ruta_guardada = default_storage.save(subruta, f)
+                url_rel = f"{settings.MEDIA_URL}{ruta_guardada}".replace('//', '/')
+                url_archivo = request.build_absolute_uri(url_rel)
+
+                adjuntos.append({
+                    'name': f.name,
+                    'url': url_archivo,
+                    'mime_type': getattr(f, 'content_type', '') or 'application/octet-stream',
+                    'size': getattr(f, 'size', 0),
+                    'metadata': {
+                        'saved_path': ruta_guardada,
+                        'original_name': f.name,
+                    }
+                })
 
         try:
             data = enviar_mensaje_chat(
