@@ -1866,10 +1866,10 @@ def enviar_mensaje_chat(persona_id, usuario_id, conversacion_id, contenido, tipo
     # Enviar push notification al destinatario
     try:
         otro = _query_one("""
-            SELECT p.id as persona_id, p.nombres, p.apellido_1, u.id as usuario_id
+            SELECT p.id as persona_id, p.nombres, p.apellido_1, COALESCE(p.usuario_id, u.id) as usuario_id
             FROM chat_conversation_participant ccp
             JOIN ctr_persona p ON p.id = ccp.persona_id
-            LEFT JOIN auth_user u ON (u.username = p.identificacion OR u.email = p.correo)
+            LEFT JOIN auth_user u ON (u.id = p.usuario_id OR u.username = p.cedula OR u.email = p.correo)
             WHERE ccp.conversation_id = %s AND ccp.persona_id != %s
             LIMIT 1
         """, [conversacion_id, persona_id])
