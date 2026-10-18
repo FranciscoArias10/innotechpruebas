@@ -47,6 +47,9 @@ from app.student_views import (
     StudentQuizDetailView,
     StudentQuizAttemptQuestionsView,
     StudentQuizAttemptReviewView,
+    StudentRubrosView,
+    StudentRubroDetailView,
+    StudentSubirComprobanteView,
 )
 
 urlpatterns = [
@@ -107,6 +110,12 @@ urlpatterns = [
     path('student/quizzes/attempts/<int:intento_id>/save-answer/', StudentQuizAttemptQuestionsView.as_view(), name='movil-student-quiz-attempt-save-answer'),
     path('student/quizzes/attempts/<int:intento_id>/finish/', StudentQuizAttemptQuestionsView.as_view(), name='movil-student-quiz-attempt-finish'),
     path('student/quizzes/attempts/<int:intento_id>/review/', StudentQuizAttemptReviewView.as_view(), name='movil-student-quiz-attempt-review'),
+
+    # Tarea 15: Pensiones, rubros y comprobantes de pago
+    path('student/finance/rubros/', StudentRubrosView.as_view(), name='movil-student-rubros'),
+    path('student/finance/rubros/<int:rubro_id>/', StudentRubroDetailView.as_view(), name='movil-student-rubro-detail'),
+    path('student/finance/comprobante/', StudentSubirComprobanteView.as_view(), name='movil-student-subir-comprobante'),
+    path('student/pensions/', StudentRubrosView.as_view(), name='movil-student-pensions'),
 
     # Endpoints del representante
     path('representative/students/<int:student_id>/grades/', RepresentativeStudentGradesView.as_view(), name='movil-representative-student-grades'),

@@ -12,3 +12,7 @@ venv/
 *.backup
 *.sql
 
+media/chat/
+
+media/comprobantes/
+media/justificaciones/
