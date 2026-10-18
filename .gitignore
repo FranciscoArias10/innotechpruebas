@@ -13,3 +13,6 @@ venv/
 *.sql
 
 media/chat/
+
+media/comprobantes/
+media/justificaciones/
