@@ -1928,8 +1928,8 @@ def obtener_rubros_estudiante(persona_id, periodo_id=None):
     if periodo_id:
         try:
             pid = int(periodo_id)
-            where_periodo = "AND (m.periodolectivo_id = %s OR r.matricula_id IS NULL)"
-            params.append(pid)
+            where_periodo = "AND (pl.periodo_id = %s OR m.periodolectivo_id = %s OR r.matricula_id IS NULL OR r.saldo > 0)"
+            params.extend([pid, pid])
         except (ValueError, TypeError):
             pass
 
@@ -1954,6 +1954,7 @@ def obtener_rubros_estudiante(persona_id, periodo_id=None):
         FROM ctr_rubro r
         LEFT JOIN ctr_tiporubro tr ON tr.id = r.tipo_id
         LEFT JOIN ctr_matricula m ON m.id = r.matricula_id
+        LEFT JOIN ctr_periodolectivo pl ON pl.id = m.periodolectivo_id
         WHERE r.persona_id = %s AND r.status = TRUE
         {where_periodo}
         ORDER BY r.fechavence ASC, r.id ASC
