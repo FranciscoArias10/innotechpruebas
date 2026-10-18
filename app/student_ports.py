@@ -1913,3 +1913,369 @@ def marcar_conversacion_leida(persona_id, conversacion_id):
         """, [conversacion_id, conversacion_id, persona_id])
     return True
 
+
+
+# ==============================================================================
+# Tarea 15: Pensiones, rubros y comprobantes de pago
+# ==============================================================================
+
+def obtener_rubros_estudiante(persona_id, periodo_id=None):
+    """
+    Lista de rubros (pensiones, matricula, etc.) y estado de cuenta del estudiante.
+    """
+    params = [persona_id]
+    where_periodo = ""
+    if periodo_id:
+        try:
+            pid = int(periodo_id)
+            where_periodo = "AND (m.periodolectivo_id = %s OR r.matricula_id IS NULL)"
+            params.append(pid)
+        except (ValueError, TypeError):
+            pass
+
+    sql = f"""
+        SELECT 
+            r.id,
+            r.nombre,
+            COALESCE(tr.nombre, 'RUBRO') as tipo,
+            r.cuota,
+            r.fecha,
+            r.fechavence,
+            r.valor,
+            r.valoriva,
+            r.valortotal,
+            r.saldo,
+            r.cancelado,
+            r.observacion,
+            r.matricula_id,
+            (SELECT COUNT(*) FROM ctr_pago p WHERE p.rubro_id = r.id AND p.status = TRUE) as total_cuotas,
+            (SELECT COUNT(*) FROM ctr_pago p WHERE p.rubro_id = r.id AND p.status = TRUE AND (p.cancelado = TRUE OR p.estado = 3)) as cuotas_pagadas,
+            (SELECT COUNT(*) FROM ctr_pago p WHERE p.rubro_id = r.id AND p.status = TRUE AND p.estado = 2) as cuotas_en_revision
+        FROM ctr_rubro r
+        LEFT JOIN ctr_tiporubro tr ON tr.id = r.tipo_id
+        LEFT JOIN ctr_matricula m ON m.id = r.matricula_id
+        WHERE r.persona_id = %s AND r.status = TRUE
+        {where_periodo}
+        ORDER BY r.fechavence ASC, r.id ASC
+    """
+    rubros_raw = _query_all(sql, params)
+
+    total_rubros = len(rubros_raw)
+    total_facturado = 0.0
+    total_saldo = 0.0
+    total_pagado = 0.0
+    total_vencido = 0.0
+    rubros_pendientes = 0
+    rubros_pagados = 0
+
+    import datetime
+    hoy = datetime.date.today()
+
+    rubros = []
+    for r in rubros_raw:
+        valortotal = float(r['valortotal'] or 0)
+        saldo = float(r['saldo'] or 0)
+        pagado = max(0.0, valortotal - saldo)
+        fechavence = r['fechavence']
+        es_cancelado = bool(r['cancelado']) or saldo <= 0.001
+
+        es_vencido = False
+        if not es_cancelado and fechavence and fechavence < hoy:
+            es_vencido = True
+            total_vencido += saldo
+
+        if es_cancelado:
+            estado = 'pagado'
+            estado_texto = 'Pagado'
+            estado_tono = 'ok'
+            rubros_pagados += 1
+        elif r.get('cuotas_en_revision', 0) > 0:
+            estado = 'en_revision'
+            estado_texto = 'En revisión'
+            estado_tono = 'info'
+            rubros_pendientes += 1
+        elif es_vencido:
+            estado = 'vencido'
+            estado_texto = 'Vencido'
+            estado_tono = 'alerta'
+            rubros_pendientes += 1
+        else:
+            estado = 'por_pagar'
+            estado_texto = 'Por pagar'
+            estado_tono = 'aviso'
+            rubros_pendientes += 1
+
+        total_facturado += valortotal
+        total_saldo += saldo
+        total_pagado += pagado
+
+        rubros.append({
+            'id': r['id'],
+            'nombre': r['nombre'],
+            'tipo': r['tipo'],
+            'cuota': r['cuota'],
+            'fecha': r['fecha'].isoformat() if r['fecha'] else '',
+            'fechavence': fechavence.isoformat() if fechavence else '',
+            'valor': float(r['valor'] or 0),
+            'valoriva': float(r['valoriva'] or 0),
+            'valortotal': valortotal,
+            'saldo': saldo,
+            'pagado': pagado,
+            'cancelado': es_cancelado,
+            'observacion': r['observacion'] or '',
+            'matricula_id': r['matricula_id'],
+            'estado': estado,
+            'estado_texto': estado_texto,
+            'estado_tono': estado_tono,
+            'total_cuotas': r['total_cuotas'],
+            'cuotas_pagadas': r['cuotas_pagadas'],
+            'cuotas_en_revision': r['cuotas_en_revision'],
+        })
+
+    estado_general = 'al_dia'
+    if total_vencido > 0:
+        estado_general = 'en_mora'
+    elif rubros_pendientes > 0:
+        estado_general = 'pendiente'
+
+    return {
+        'resumen': {
+            'total_rubros': total_rubros,
+            'total_facturado': round(total_facturado, 2),
+            'total_saldo': round(total_saldo, 2),
+            'total_pagado': round(total_pagado, 2),
+            'total_vencido': round(total_vencido, 2),
+            'rubros_pendientes': rubros_pendientes,
+            'rubros_pagados': rubros_pagados,
+            'estado_general': estado_general,
+            'al_dia': total_vencido == 0 and rubros_pendientes == 0,
+        },
+        'rubros': rubros,
+        'cuentas_bancarias': [
+            {
+                'banco': 'Banco Pichincha',
+                'tipo_cuenta': 'Cuenta Corriente',
+                'numero_cuenta': '2100234567',
+                'titular': 'UNIEBEC - Unidad Educativa Bilingüe',
+                'ruc': '0992345678001',
+                'correo': 'colecturia@uniebec.edu.ec'
+            },
+            {
+                'banco': 'Banco de Guayaquil',
+                'tipo_cuenta': 'Cuenta Corriente',
+                'numero_cuenta': '1100987654',
+                'titular': 'UNIEBEC - Unidad Educativa Bilingüe',
+                'ruc': '0992345678001',
+                'correo': 'colecturia@uniebec.edu.ec'
+            }
+        ]
+    }
+
+
+def obtener_detalle_rubro(persona_id, rubro_id):
+    """
+    Retorna el detalle completo de un rubro y la lista de sus pagos/cuotas.
+    """
+    sql_rubro = """
+        SELECT 
+            r.id,
+            r.nombre,
+            COALESCE(tr.nombre, 'RUBRO') as tipo,
+            r.cuota,
+            r.fecha,
+            r.fechavence,
+            r.valor,
+            r.valoriva,
+            r.valortotal,
+            r.saldo,
+            r.cancelado,
+            r.observacion,
+            r.matricula_id
+        FROM ctr_rubro r
+        LEFT JOIN ctr_tiporubro tr ON tr.id = r.tipo_id
+        WHERE r.id = %s AND r.persona_id = %s AND r.status = TRUE
+    """
+    rubro = _query_one(sql_rubro, [rubro_id, persona_id])
+    if not rubro:
+        return None
+
+    import datetime
+    hoy = datetime.date.today()
+
+    sql_pagos = """
+        SELECT 
+            p.id,
+            p.rubro_id,
+            p.fecha,
+            p.fechapago,
+            p.codigopago,
+            p.valortotal,
+            p.valorpago,
+            p.cancelado,
+            p.estado,
+            p.efectivo,
+            p.reversado,
+            pp.id as comprobante_id,
+            pp.estado as comprobante_estado,
+            pp.archivo as comprobante_archivo,
+            pp.fecha as comprobante_fecha,
+            pp.valor as comprobante_valor,
+            pp.observacion as comprobante_observacion
+        FROM ctr_pago p
+        LEFT JOIN (
+            SELECT DISTINCT ON (pago_id) *
+            FROM ctr_pagopension
+            WHERE status = TRUE
+            ORDER BY pago_id, id DESC
+        ) pp ON pp.pago_id = p.id
+        WHERE p.rubro_id = %s AND p.status = TRUE
+        ORDER BY p.fecha ASC, p.id ASC
+    """
+    pagos_raw = _query_all(sql_pagos, [rubro_id])
+
+    pagos = []
+    for p in pagos_raw:
+        estado_num = p['estado']
+        cancelado = bool(p['cancelado'])
+        fecha_pago_vence = p['fecha']
+        es_vencido = False
+        if not cancelado and fecha_pago_vence and fecha_pago_vence < hoy:
+            es_vencido = True
+
+        if cancelado or estado_num == 3:
+            estado_texto = 'Pagado'
+            estado_tono = 'ok'
+        elif estado_num == 2 or (p.get('comprobante_id') and p.get('comprobante_estado') == 1):
+            estado_texto = 'En revisión'
+            estado_tono = 'info'
+        elif estado_num == 4:
+            estado_texto = 'Rechazado'
+            estado_tono = 'peligro'
+        elif estado_num == 5 or p['reversado']:
+            estado_texto = 'Reversado'
+            estado_tono = 'neutro'
+        elif es_vencido:
+            estado_texto = 'Vencido'
+            estado_tono = 'alerta'
+        else:
+            estado_texto = 'Por pagar'
+            estado_tono = 'aviso'
+
+        comprobante = None
+        if p.get('comprobante_id'):
+            comprobante = {
+                'id': p['comprobante_id'],
+                'estado': p['comprobante_estado'],
+                'estado_texto': 'En revisión' if p['comprobante_estado'] == 1 else 'Aprobado' if p['comprobante_estado'] == 3 else 'Rechazado',
+                'archivo': p['comprobante_archivo'] or '',
+                'fecha': p['comprobante_fecha'].isoformat() if p['comprobante_fecha'] else '',
+                'valor': float(p['comprobante_valor'] or 0),
+                'observacion': p['comprobante_observacion'] or '',
+            }
+
+        pagos.append({
+            'id': p['id'],
+            'codigopago': p['codigopago'],
+            'valortotal': float(p['valortotal'] or 0),
+            'valorpago': float(p['valorpago'] or 0),
+            'cancelado': cancelado,
+            'estado': estado_num,
+            'estado_texto': estado_texto,
+            'estado_tono': estado_tono,
+            'fecha': fecha_pago_vence.isoformat() if fecha_pago_vence else '',
+            'fechapago': p['fechapago'].isoformat() if p['fechapago'] else '',
+            'comprobante': comprobante,
+        })
+
+    valortotal = float(rubro['valortotal'] or 0)
+    saldo = float(rubro['saldo'] or 0)
+    pagado = max(0.0, valortotal - saldo)
+
+    return {
+        'id': rubro['id'],
+        'nombre': rubro['nombre'],
+        'tipo': rubro['tipo'],
+        'cuota': rubro['cuota'],
+        'fecha': rubro['fecha'].isoformat() if rubro['fecha'] else '',
+        'fechavence': rubro['fechavence'].isoformat() if rubro['fechavence'] else '',
+        'valor': float(rubro['valor'] or 0),
+        'valoriva': float(rubro['valoriva'] or 0),
+        'valortotal': valortotal,
+        'saldo': saldo,
+        'pagado': pagado,
+        'cancelado': bool(rubro['cancelado']),
+        'observacion': rubro['observacion'] or '',
+        'pagos': pagos,
+    }
+
+
+def registrar_comprobante_pago(persona_id, usuario_id, pago_id, archivo_subido=None, valor=None, fecha=None, observacion=None):
+    """
+    Sube y registra el comprobante de pago de una cuota de pensión, quedando en revisión para Colecturía.
+    """
+    sql_valida = """
+        SELECT p.id, p.valortotal, p.valorpago, p.estado, p.cancelado, r.id as rubro_id
+        FROM ctr_pago p
+        JOIN ctr_rubro r ON r.id = p.rubro_id
+        WHERE p.id = %s AND r.persona_id = %s AND p.status = TRUE
+    """
+    pago = _query_one(sql_valida, [pago_id, persona_id])
+    if not pago:
+        raise LookupError("El pago seleccionado no existe o no corresponde a tu cuenta.")
+
+    import os
+    import datetime
+    from django.core.files.storage import default_storage
+    from django.utils.text import get_valid_filename
+
+    hoy = datetime.date.today()
+    fecha_comprobante = fecha or hoy
+    valor_comprobante = valor if valor is not None else float(pago['valortotal'] or 0)
+
+    # Guardar archivo si viene
+    ruta_guardada = ""
+    if archivo_subido:
+        nombre_limpio = get_valid_filename(getattr(archivo_subido, 'name', 'comprobante.jpg'))
+        timestamp = int(datetime.datetime.now().timestamp())
+        subruta = os.path.join('comprobantes', f"{persona_id}_{pago_id}_{timestamp}_{nombre_limpio}")
+        ruta_guardada = default_storage.save(subruta, archivo_subido)
+
+    obs_final = observacion or "Comprobante de transferencia subido desde la app móvil"
+
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            INSERT INTO ctr_pagopension (
+                pago_id,
+                archivo,
+                fecha,
+                valor,
+                observacion,
+                estado,
+                status,
+                fecha_creacion,
+                usuario_creacion_id
+            ) VALUES (%s, %s, %s, %s, %s, 1, TRUE, NOW(), %s)
+            RETURNING id, fecha_creacion
+        """, [pago_id, ruta_guardada, fecha_comprobante, valor_comprobante, obs_final, usuario_id])
+        pp_id, fecha_creacion = cursor.fetchone()
+
+        # Actualizar estado de ctr_pago a 2 (En revisión por Colecturía)
+        cursor.execute("""
+            UPDATE ctr_pago
+            SET estado = 2,
+                fecha_modificacion = NOW(),
+                usuario_modificacion_id = %s
+            WHERE id = %s
+        """, [usuario_id, pago_id])
+
+    return {
+        'id': pp_id,
+        'pago_id': pago_id,
+        'archivo': ruta_guardada,
+        'fecha': fecha_comprobante.isoformat() if isinstance(fecha_comprobante, datetime.date) else str(fecha_comprobante),
+        'valor': float(valor_comprobante),
+        'observacion': obs_final,
+        'estado': 1,
+        'estado_texto': 'En revisión (esperando validación de Colecturía)',
+        'fecha_creacion': fecha_creacion.isoformat() if fecha_creacion else '',
+    }

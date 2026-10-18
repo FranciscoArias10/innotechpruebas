@@ -1514,3 +1514,161 @@ class StudentQuizAttemptReviewView(APIView):
             resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return resp.to_dict()
+
+
+# ==============================================================================
+# Tarea 15: Pensiones, rubros y comprobantes de pago
+# ==============================================================================
+
+class StudentRubrosView(APIView):
+    """
+    GET /api/v1.0.0/student/finance/rubros/
+
+    Lista de rubros (pensiones, matricula) y estado de cuenta del estudiante.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        resp = RespuestaApi()
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        periodo_id = request.headers.get('X-Period-ID') or request.query_params.get('periodo_id') or request.query_params.get('period_id')
+        try:
+            from app.student_ports import obtener_rubros_estudiante
+            data = obtener_rubros_estudiante(est['persona_id'], periodo_id)
+            resp.set_success(True)
+            resp.set_message("Rubros y pensiones obtenidos exitosamente.")
+            resp.set_data(data)
+            resp.set_status(status.HTTP_200_OK)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message(f"Error al obtener rubros: {str(e)}")
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()
+
+
+class StudentRubroDetailView(APIView):
+    """
+    GET /api/v1.0.0/student/finance/rubros/<int:rubro_id>/
+
+    Detalle de un rubro específico y desglose de sus pagos/cuotas.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, rubro_id):
+        resp = RespuestaApi()
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        try:
+            from app.student_ports import obtener_detalle_rubro
+            data = obtener_detalle_rubro(est['persona_id'], int(rubro_id))
+            if not data:
+                resp.set_success(False)
+                resp.set_message("El rubro solicitado no existe o no pertenece a tu cuenta.")
+                resp.set_status(status.HTTP_404_NOT_FOUND)
+                return resp.to_dict()
+
+            from django.conf import settings
+            for p in data.get('pagos', []):
+                comp = p.get('comprobante')
+                if comp and comp.get('archivo'):
+                    sub = comp['archivo']
+                    if not sub.startswith('http'):
+                        url_rel = f"{settings.MEDIA_URL}{sub}".replace('//', '/')
+                        comp['archivo_url'] = request.build_absolute_uri(url_rel)
+                    else:
+                        comp['archivo_url'] = sub
+
+            resp.set_success(True)
+            resp.set_message("Detalle de rubro obtenido exitosamente.")
+            resp.set_data(data)
+            resp.set_status(status.HTTP_200_OK)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message(f"Error al obtener detalle del rubro: {str(e)}")
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()
+
+
+class StudentSubirComprobanteView(APIView):
+    """
+    POST /api/v1.0.0/student/finance/comprobante/
+
+    Registra el comprobante de pago de una cuota de pension para validación de Colecturía.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        resp = RespuestaApi()
+        est = _obtener_estudiante_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        pago_id = request.data.get('pago_id')
+        if not pago_id:
+            resp.set_success(False)
+            resp.set_message("El campo 'pago_id' es obligatorio.")
+            resp.set_status(status.HTTP_400_BAD_REQUEST)
+            return resp.to_dict()
+
+        archivo = request.FILES.get('archivo') or request.FILES.get('file') or request.FILES.get('comprobante')
+        if not archivo:
+            resp.set_success(False)
+            resp.set_message("Debes adjuntar la foto o documento del comprobante de transferencia.")
+            resp.set_status(status.HTTP_400_BAD_REQUEST)
+            return resp.to_dict()
+
+        valor = request.data.get('valor')
+        fecha = request.data.get('fecha')
+        numero_comprobante = request.data.get('numero_comprobante') or request.data.get('referencia') or ''
+        banco = request.data.get('banco') or ''
+        observacion_usuario = request.data.get('observacion') or ''
+
+        partes_obs = []
+        if numero_comprobante:
+            partes_obs.append(f"Ref/Comprobante: {numero_comprobante}")
+        if banco:
+            partes_obs.append(f"Banco: {banco}")
+        if observacion_usuario:
+            partes_obs.append(f"Nota: {observacion_usuario}")
+
+        observacion_final = " | ".join(partes_obs) if partes_obs else "Comprobante de transferencia subido desde la app móvil"
+
+        try:
+            from app.student_ports import registrar_comprobante_pago
+            res = registrar_comprobante_pago(
+                persona_id=est['persona_id'],
+                usuario_id=request.user.id,
+                pago_id=int(pago_id),
+                archivo_subido=archivo,
+                valor=float(valor) if valor else None,
+                fecha=fecha,
+                observacion=observacion_final
+            )
+
+            from django.conf import settings
+            if res.get('archivo'):
+                sub = res['archivo']
+                url_rel = f"{settings.MEDIA_URL}{sub}".replace('//', '/')
+                res['archivo_url'] = request.build_absolute_uri(url_rel)
+
+            resp.set_success(True)
+            resp.set_message("Comprobante registrado exitosamente. Ha sido enviado a Colecturía para su revisión.")
+            resp.set_data(res)
+            resp.set_status(status.HTTP_201_CREATED)
+        except LookupError as e:
+            resp.set_success(False)
+            resp.set_message(str(e))
+            resp.set_status(status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            resp.set_success(False)
+            resp.set_message(f"Error al subir comprobante: {str(e)}")
+            resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return resp.to_dict()
