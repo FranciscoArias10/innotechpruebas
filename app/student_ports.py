@@ -2966,3 +2966,243 @@ def crear_consulta_docente(persona_id, usuario_id, materia_asignada_id, asunto, 
         'respondida': False,
         'leida': False,
     }
+
+
+# ===========================================================================
+# Tarea 13: Calendario y Cronograma Institucional (ctr_actividad, ctr_cronogramaacademico, ctr_semanacronograma, ctr_cronogramaevaluativo)
+# ===========================================================================
+
+def obtener_calendario_completo(persona_id, periodo_id, vista='agenda', fecha_ref=None, subject_id=None):
+    """
+    Obtiene todas las fechas y eventos del estudiante en un solo lugar:
+    1. Entregas y tareas de sus materias (ctr_actividad)
+    2. Semanas del cronograma academico del periodo (ctr_semanacronograma)
+    3. Hitos del cronograma evaluativo institucional (ctr_cronogramaevaluativo / ctr_detallecronogramaevaluativo)
+    4. Lista de materias matriculadas para el filtro por asignatura
+    """
+    from django.utils import timezone
+    now = timezone.now()
+
+    # 1. Obtener lista de materias matriculadas para filtro
+    sql_materias = """
+        SELECT DISTINCT m.id AS materia_id, ma.id AS materia_asignada_id,
+               asig.nombre AS materia_nombre, COALESCE(asig.color, '#0b3b60') AS materia_color
+        FROM ctr_estudiante est
+        JOIN ctr_matricula mat ON mat.estudiante_id = est.id AND mat.status = TRUE
+        JOIN ctr_periodolectivo pl ON pl.id = mat.periodolectivo_id
+        JOIN ctr_periodo per ON per.id = pl.periodo_id
+        JOIN ctr_nivelmatriculdo nm ON nm.matricula_id = mat.id AND nm.status = TRUE
+        JOIN ctr_materiaasignada ma ON ma.nivelmatriculado_id = nm.id AND ma.status = TRUE
+        JOIN ctr_materia m ON m.id = ma.materia_id
+        JOIN ctr_asignaturamallacurricular amc ON amc.id = m.asignaturamalla_id
+        JOIN ctr_asignatura asig ON asig.id = amc.asignatura_id
+        WHERE est.persona_id = %s AND per.id = %s
+        ORDER BY asig.nombre ASC
+    """
+    rows_mat = _query_all(sql_materias, [persona_id, periodo_id])
+    materias_filtro = [
+        {
+            'id': r['materia_id'],
+            'materia_asignada_id': r['materia_asignada_id'],
+            'nombre': r['materia_nombre'],
+            'color': r['materia_color'],
+        }
+        for r in rows_mat
+    ]
+
+    # 2. Obtener actividades de las materias
+    sql_act = """
+        SELECT a.id, a.nombre, a.descripcion, a.fechainicio, a.fechafin,
+               a.cerrada, a.ponderacion, a.tipoentrega,
+               m.id as materia_id, ma.id as materia_asignada_id,
+               asig.nombre as materia_nombre, COALESCE(asig.color, '#0b3b60') as materia_color,
+               e_act.id as entrega_id, e_act.fecha as fecha_entrega,
+               n_act.nota
+        FROM ctr_estudiante est
+        JOIN ctr_matricula mat ON mat.estudiante_id = est.id AND mat.status = TRUE
+        JOIN ctr_periodolectivo pl ON pl.id = mat.periodolectivo_id
+        JOIN ctr_periodo per ON per.id = pl.periodo_id
+        JOIN ctr_nivelmatriculdo nm ON nm.matricula_id = mat.id AND nm.status = TRUE
+        JOIN ctr_materiaasignada ma ON ma.nivelmatriculado_id = nm.id AND ma.status = TRUE
+        JOIN ctr_materia m ON m.id = ma.materia_id
+        JOIN ctr_asignaturamallacurricular amc ON amc.id = m.asignaturamalla_id
+        JOIN ctr_asignatura asig ON asig.id = amc.asignatura_id
+        JOIN ctr_planificacionsemanalcontenido plan ON plan.materia_id = m.id AND plan.status = TRUE
+        JOIN ctr_actividad a ON a.planificacionsemanal_id = plan.id AND a.status = TRUE AND (a.oculto = FALSE OR a.oculto IS NULL)
+        LEFT JOIN ctr_entregaactividad e_act ON e_act.actividad_id = a.id AND e_act.materiaasignada_id = ma.id AND e_act.status = TRUE
+        LEFT JOIN ctr_notaactividad n_act ON n_act.actividad_id = a.id AND n_act.materiaasignada_id = ma.id AND n_act.status = TRUE
+        WHERE est.persona_id = %s AND per.id = %s
+    """
+    params_act = [persona_id, periodo_id]
+    if subject_id:
+        sql_act += " AND (m.id = %s OR ma.id = %s)"
+        params_act.extend([subject_id, subject_id])
+
+    sql_act += " ORDER BY a.fechafin ASC NULLS LAST, a.id DESC"
+    rows_act = _query_all(sql_act, params_act)
+
+    items = []
+    actividades_retro = []
+
+    for r in rows_act:
+        fechafin_dt = r['fechafin']
+        is_expired = bool(r['cerrada']) or (fechafin_dt is not None and fechafin_dt < now)
+        entregada = r['entrega_id'] is not None
+        vencida = is_expired and not entregada
+
+        fecha_str = None
+        hora_str = None
+        if fechafin_dt:
+            if hasattr(fechafin_dt, 'strftime'):
+                fecha_str = fechafin_dt.strftime('%Y-%m-%d')
+                hora_str = fechafin_dt.strftime('%H:%M')
+            else:
+                fecha_str = str(fechafin_dt)[:10]
+
+        act_data = {
+            'id': f"act-{r['id']}",
+            'actividad_id': r['id'],
+            'tipo': 'actividad',
+            'titulo': r['nombre'],
+            'descripcion': r['descripcion'] or '',
+            'fecha': fecha_str,
+            'hora': hora_str,
+            'fecha_inicio': r['fechainicio'].isoformat() if hasattr(r['fechainicio'], 'isoformat') else str(r['fechainicio']) if r['fechainicio'] else None,
+            'fecha_fin': fechafin_dt.isoformat() if hasattr(fechafin_dt, 'isoformat') else str(fechafin_dt) if fechafin_dt else None,
+            'materia_id': r['materia_id'],
+            'materia_asignada_id': r['materia_asignada_id'],
+            'materia_nombre': r['materia_nombre'],
+            'materia_color': r['materia_color'],
+            'entregada': entregada,
+            'vencida': vencida,
+            'cerrada': bool(r['cerrada']),
+            'ponderacion': float(r['ponderacion']) if r['ponderacion'] is not None else 10.0,
+            'nota': float(r['nota']) if r['nota'] is not None else None,
+            'tipoentrega': r['tipoentrega'] or 1,
+        }
+        items.append(act_data)
+
+        retro_item = dict(r)
+        retro_item['entregada'] = entregada
+        retro_item['vencida'] = vencida
+        retro_item['ponderacion'] = act_data['ponderacion']
+        retro_item['fechainicio'] = act_data['fecha_inicio']
+        retro_item['fechafin'] = act_data['fecha_fin']
+        retro_item['fecha_entrega'] = r['fecha_entrega'].isoformat() if hasattr(r['fecha_entrega'], 'isoformat') else str(r['fecha_entrega']) if r['fecha_entrega'] else None
+        actividades_retro.append(retro_item)
+
+    # 3. Cronograma Academico Institucional (Semanas)
+    cronograma_info = None
+    sql_crono = """
+        SELECT ca.id, ca.nombre, ca.inicio, ca.fin
+        FROM ctr_cronogramaacademico ca
+        WHERE ca.periodo_id = %s AND ca.status = TRUE
+        ORDER BY ca.id DESC LIMIT 1
+    """
+    rows_crono = _query_all(sql_crono, [periodo_id])
+    if rows_crono:
+        c_row = rows_crono[0]
+        crono_id = c_row['id']
+        sql_semanas = """
+            SELECT s.id, s.orden, s.nombre, s.inicio, s.fin
+            FROM ctr_semanacronograma s
+            WHERE s.cronograma_id = %s AND s.status = TRUE
+            ORDER BY s.orden ASC
+        """
+        rows_sem = _query_all(sql_semanas, [crono_id])
+        semanas_list = []
+        for s in rows_sem:
+            sem_inicio = s['inicio'].strftime('%Y-%m-%d') if hasattr(s['inicio'], 'strftime') else str(s['inicio']) if s['inicio'] else None
+            sem_fin = s['fin'].strftime('%Y-%m-%d') if hasattr(s['fin'], 'strftime') else str(s['fin']) if s['fin'] else None
+            s_dict = {
+                'id': s['id'],
+                'orden': s['orden'],
+                'nombre': s['nombre'],
+                'inicio': sem_inicio,
+                'fin': sem_fin,
+            }
+            semanas_list.append(s_dict)
+
+            if not subject_id and sem_inicio:
+                items.append({
+                    'id': f"sem-{s['id']}",
+                    'tipo': 'institucional',
+                    'titulo': f"Inicio {s['nombre']}",
+                    'descripcion': f"Periodo de clases semanal ({sem_inicio} al {sem_fin})",
+                    'fecha': sem_inicio,
+                    'hora': '07:00',
+                    'fecha_inicio': sem_inicio,
+                    'fecha_fin': sem_fin,
+                    'materia_id': None,
+                    'materia_asignada_id': None,
+                    'materia_nombre': 'Institucional',
+                    'materia_color': '#0b3b60',
+                    'orden': s['orden'],
+                })
+
+        cronograma_info = {
+            'id': c_row['id'],
+            'nombre': c_row['nombre'],
+            'inicio': c_row['inicio'].strftime('%Y-%m-%d') if hasattr(c_row['inicio'], 'strftime') else str(c_row['inicio']) if c_row['inicio'] else None,
+            'fin': c_row['fin'].strftime('%Y-%m-%d') if hasattr(c_row['fin'], 'strftime') else str(c_row['fin']) if c_row['fin'] else None,
+            'semanas': semanas_list,
+        }
+
+    # 4. Cronograma Evaluativo Institucional (Bimestres / Evaluaciones)
+    sql_eval = """
+        SELECT d.id, d.inicio, d.fin, i.nombre as item_nombre, i.alias as item_alias,
+               COALESCE(ime.porcentaje, 0) as porcentaje
+        FROM ctr_cronogramaevaluativo ce
+        JOIN ctr_detallecronogramaevaluativo d ON d.cronograma_id = ce.id AND d.status = TRUE
+        JOIN ctr_itemevaluacion i ON i.id = d.item_id AND i.status = TRUE
+        LEFT JOIN ctr_itemmodeloevaluativo ime ON ime.itemevaluacion_id = i.id AND ime.modeloevaluativo_id = ce.modeloevaluativo_id
+        WHERE ce.status = TRUE
+        ORDER BY d.inicio ASC
+    """
+    rows_eval = _query_all(sql_eval, [])
+    evaluaciones_list = []
+    for ev in rows_eval:
+        ev_inicio = ev['inicio'].strftime('%Y-%m-%d') if hasattr(ev['inicio'], 'strftime') else str(ev['inicio']) if ev['inicio'] else None
+        ev_fin = ev['fin'].strftime('%Y-%m-%d') if hasattr(ev['fin'], 'strftime') else str(ev['fin']) if ev['fin'] else None
+        porc = float(ev['porcentaje']) if ev['porcentaje'] is not None else 0.0
+
+        ev_dict = {
+            'id': ev['id'],
+            'nombre': ev['item_nombre'],
+            'alias': ev['item_alias'],
+            'inicio': ev_inicio,
+            'fin': ev_fin,
+            'porcentaje': porc,
+        }
+        evaluaciones_list.append(ev_dict)
+
+        if not subject_id and ev_inicio:
+            items.append({
+                'id': f"eval-{ev['id']}",
+                'tipo': 'evaluacion',
+                'titulo': f"Periodo Evaluativo: {ev['item_nombre']}",
+                'descripcion': f"Cierre evaluativo {ev['item_alias']} con ponderacion de {porc}%",
+                'fecha': ev_fin or ev_inicio,
+                'hora': '23:59',
+                'fecha_inicio': ev_inicio,
+                'fecha_fin': ev_fin,
+                'materia_id': None,
+                'materia_asignada_id': None,
+                'materia_nombre': 'Evaluación Institucional',
+                'materia_color': '#8B5CF6',
+                'porcentaje': porc,
+            })
+
+    items.sort(key=lambda x: (x['fecha'] or '9999-12-31', x.get('hora') or '00:00'))
+
+    pending_count = len([a for a in items if a.get('tipo') == 'actividad' and not a.get('entregada') and not a.get('vencida')])
+
+    return {
+        'items': items,
+        'activities': actividades_retro,
+        'cronograma_academico': cronograma_info,
+        'cronograma_evaluativo': evaluaciones_list,
+        'subjects': materias_filtro,
+        'total': len(items),
+        'pending_count': pending_count,
+    }

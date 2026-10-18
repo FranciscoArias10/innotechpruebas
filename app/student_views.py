@@ -684,6 +684,7 @@ from app.student_ports import (
     entregar_actividad,
     eliminar_entrega_actividad,
     obtener_actividades_pendientes,
+    obtener_calendario_completo,
 )
 
 
@@ -810,7 +811,11 @@ class StudentActivityDetailView(APIView):
 
 class StudentCalendarView(APIView):
     """
-    GET -> Actividades y calendario general del estudiante
+    GET -> Actividades, cronograma institucional y evaluaciones del estudiante (Tarea 13)
+    Soporta query params:
+      - view: 'agenda' | 'month' | 'week'
+      - date: YYYY-MM-DD
+      - subject_id: int (para filtrar por materia)
     """
     permission_classes = [IsAuthenticated]
 
@@ -824,8 +829,24 @@ class StudentCalendarView(APIView):
         if est is None:
             return resp.to_dict()
 
+        vista = request.query_params.get('view', 'agenda')
+        fecha_ref = request.query_params.get('date')
+        subject_id_raw = request.query_params.get('subject_id')
+        subject_id = None
+        if subject_id_raw:
+            try:
+                subject_id = int(subject_id_raw)
+            except (ValueError, TypeError):
+                subject_id = None
+
         try:
-            data = obtener_actividades_pendientes(est['persona_id'], periodo_id)
+            data = obtener_calendario_completo(
+                persona_id=est['persona_id'],
+                periodo_id=periodo_id,
+                vista=vista,
+                fecha_ref=fecha_ref,
+                subject_id=subject_id,
+            )
             resp.set_success(True)
             resp.set_message("Actividades y cronograma recuperados con exito.")
             resp.set_data(data)
