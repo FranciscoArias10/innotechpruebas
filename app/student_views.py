@@ -1288,6 +1288,7 @@ class StudentChatMessagesView(APIView):
         if archivos_subidos:
             import os
             import datetime
+            from urllib.parse import unquote
             from django.core.files.storage import default_storage
             from django.utils.text import get_valid_filename
             from django.conf import settings
@@ -1296,21 +1297,50 @@ class StudentChatMessagesView(APIView):
                 tipo = 'file'
 
             for f in archivos_subidos:
-                nombre_limpio = get_valid_filename(f.name)
+                # Decodificar el nombre si viene con codificación de URL (%20, %C3%81, etc.)
+                try:
+                    nombre_real = unquote(f.name)
+                except Exception:
+                    nombre_real = f.name
+
+                nombre_limpio = get_valid_filename(nombre_real)
                 timestamp = int(datetime.datetime.now().timestamp())
                 subruta = os.path.join('chat', f"{est['persona_id']}_{timestamp}_{nombre_limpio}")
                 ruta_guardada = default_storage.save(subruta, f)
                 url_rel = f"{settings.MEDIA_URL}{ruta_guardada}".replace('//', '/')
                 url_archivo = request.build_absolute_uri(url_rel)
 
+                # Deducir MIME type adecuado según la extensión
+                content_type = getattr(f, 'content_type', '') or ''
+                ext = (nombre_real.split('.')[-1] if '.' in nombre_real else '').lower()
+                if not content_type or content_type == 'application/octet-stream':
+                    if ext == 'docx':
+                        content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                    elif ext == 'doc':
+                        content_type = 'application/msword'
+                    elif ext == 'pdf':
+                        content_type = 'application/pdf'
+                    elif ext == 'xlsx':
+                        content_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                    elif ext == 'xls':
+                        content_type = 'application/vnd.ms-excel'
+                    elif ext == 'pptx':
+                        content_type = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+                    elif ext == 'ppt':
+                        content_type = 'application/vnd.ms-powerpoint'
+                    elif ext in ('jpg', 'jpeg'):
+                        content_type = 'image/jpeg'
+                    elif ext == 'png':
+                        content_type = 'image/png'
+
                 adjuntos.append({
-                    'name': f.name,
+                    'name': nombre_real,
                     'url': url_archivo,
-                    'mime_type': getattr(f, 'content_type', '') or 'application/octet-stream',
+                    'mime_type': content_type or 'application/octet-stream',
                     'size': getattr(f, 'size', 0),
                     'metadata': {
                         'saved_path': ruta_guardada,
-                        'original_name': f.name,
+                        'original_name': nombre_real,
                     }
                 })
 

@@ -13,7 +13,7 @@ Consultas directas a PostgreSQL respetando el esquema real:
   - ctr_materia -> ctr_asignaturamallacurricular -> ctr_asignatura (nombre, color)
   - ctr_clase (materia_id, dia, inicio, fin, aula_id)
 """
-from django.db import connection
+from django.db import connection, transaction
 
 
 def _query_one(sql, params=()):
@@ -461,7 +461,7 @@ def registrar_justificacion_asistencia(persona_id, periodo_id, materia_asignada_
 
     matricula_id = m_row['matricula_id']
 
-    from django.db import connection
+    from django.db import connection, transaction
     with connection.cursor() as cur:
         cur.execute("""
             INSERT INTO ctr_justificacionasistencia (
@@ -1885,59 +1885,65 @@ def enviar_mensaje_chat(persona_id, usuario_id, conversacion_id, contenido, tipo
     if not contenido and not adjuntos:
         raise ValueError("El mensaje no puede estar vacío.")
 
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            INSERT INTO chat_message (conversation_id, sender_id, type, content, created_at, updated_at, is_deleted)
-            VALUES (%s, %s, %s, %s, NOW(), NOW(), FALSE)
-            RETURNING id, created_at
-        """, [conversacion_id, persona_id, tipo or 'text', (contenido or '').strip()])
-        row = cursor.fetchone()
-        msg_id, created_at = row[0], row[1]
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO chat_message (conversation_id, sender_id, type, content, created_at, updated_at, is_deleted)
+                VALUES (%s, %s, %s, %s, NOW(), NOW(), FALSE)
+                RETURNING id, created_at
+            """, [conversacion_id, persona_id, tipo or 'text', (contenido or '').strip()])
+            row = cursor.fetchone()
+            msg_id, created_at = row[0], row[1]
 
-        # Guardar adjuntos si los hay
-        adj_resultado = []
-        if adjuntos and isinstance(adjuntos, list):
-            import json
-            for adj in adjuntos:
-                meta = adj.get('metadata') if isinstance(adj.get('metadata'), dict) else {}
-                cursor.execute("""
-                    INSERT INTO chat_message_attachment (message_id, file, original_filename, mime_type, size_bytes, metadata, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, NOW())
-                    RETURNING id
-                """, [
-                    msg_id,
-                    adj.get('url', ''),
-                    adj.get('name', 'adjunto'),
-                    adj.get('mime_type', 'application/octet-stream'),
-                    adj.get('size', 0),
-                    json.dumps(meta)
-                ])
-                adj_id = cursor.fetchone()[0]
-                adj_resultado.append({
-                    'id': adj_id,
-                    'url': adj.get('url', ''),
-                    'name': adj.get('name', ''),
-                    'mime_type': adj.get('mime_type', 'application/octet-stream'),
-                    'size': adj.get('size', 0),
-                })
+            # Guardar adjuntos si los hay
+            adj_resultado = []
+            if adjuntos and isinstance(adjuntos, list):
+                import json
+                for adj in adjuntos:
+                    meta = adj.get('metadata') if isinstance(adj.get('metadata'), dict) else {}
+                    url_val = (adj.get('url') or '')[:500]
+                    name_val = (adj.get('name') or 'adjunto')[:500]
+                    mime_val = (adj.get('mime_type') or 'application/octet-stream')[:127]
+                    size_val = adj.get('size', 0) or 0
+                    cursor.execute("""
+                        INSERT INTO chat_message_attachment (message_id, file, original_filename, mime_type, size_bytes, metadata, created_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                        RETURNING id
+                    """, [
+                        msg_id,
+                        url_val,
+                        name_val,
+                        mime_val,
+                        size_val,
+                        json.dumps(meta)
+                    ])
+                    adj_id = cursor.fetchone()[0]
+                    adj_resultado.append({
+                        'id': adj_id,
+                        'url': url_val,
+                        'name': name_val,
+                        'mime_type': mime_val,
+                        'size': size_val,
+                    })
 
-        # Actualizar conversación
-        vista_previa = (contenido or 'Archivo adjunto')[:90]
-        cursor.execute("""
-            UPDATE chat_conversation
-            SET last_message_at = NOW(),
-                last_message_preview = %s,
-                last_message_sender_id = %s,
-                updated_at = NOW()
-            WHERE id = %s
-        """, [vista_previa, persona_id, conversacion_id])
+            # Actualizar conversación
+            nombre_adj = adjuntos[0].get('name') if (adjuntos and isinstance(adjuntos, list) and len(adjuntos) > 0 and adjuntos[0].get('name')) else 'Archivo adjunto'
+            vista_previa = (contenido or nombre_adj)[:90]
+            cursor.execute("""
+                UPDATE chat_conversation
+                SET last_message_at = NOW(),
+                    last_message_preview = %s,
+                    last_message_sender_id = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+            """, [vista_previa, persona_id, conversacion_id])
 
-        # Actualizar último leído para el remitente
-        cursor.execute("""
-            UPDATE chat_conversation_participant
-            SET last_read_at = NOW(), last_read_message_id = %s
-            WHERE conversation_id = %s AND persona_id = %s
-        """, [msg_id, conversacion_id, persona_id])
+            # Actualizar último leído para el remitente
+            cursor.execute("""
+                UPDATE chat_conversation_participant
+                SET last_read_at = NOW(), last_read_message_id = %s
+                WHERE conversation_id = %s AND persona_id = %s
+            """, [msg_id, conversacion_id, persona_id])
 
     # Enviar push notification al destinatario
     try:
