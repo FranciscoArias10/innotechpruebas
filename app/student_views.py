@@ -547,6 +547,7 @@ class StudentHomeView(APIView):
         respuesta.set_success(True)
         respuesta.set_message('Dashboard de inicio recuperado con exito.')
         respuesta.set_data({
+            'student': est,
             'summary': resumen,
             'subjects': materias,
             'grades': calificaciones,
