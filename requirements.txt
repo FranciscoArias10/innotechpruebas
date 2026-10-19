@@ -17,3 +17,6 @@ psycopg2-binary==2.9.13
 # CORS
 django-cors-headers==4.9.0
 
+
+# Generación de PDF
+reportlab>=4.0.0
