@@ -63,6 +63,30 @@ def _obtener_estudiante_actual(request, respuesta):
     return est
 
 
+def _obtener_persona_actual(request, respuesta):
+    """
+    Obtiene los datos de la persona asociada a request.user (estudiante, docente o personal).
+    Permite acceso transversal a modulos como chat.
+    """
+    from app.student_ports import _query_one
+    sql = """
+        SELECT p.id as persona_id,
+               p.nombres, p.apellido_1, p.apellido_2,
+               TRIM(p.nombres || ' ' || p.apellido_1 || ' ' || COALESCE(p.apellido_2, '')) as nombre_completo,
+               p.cedula, p.correo_institucional
+        FROM ctr_persona p
+        WHERE p.usuario_id = %s AND p.status = TRUE
+        LIMIT 1
+    """
+    row = _query_one(sql, [request.user.id])
+    if not row:
+        respuesta.set_success(False)
+        respuesta.set_message('No se encontró una persona asociada a tu cuenta de usuario.')
+        respuesta.set_status(status.HTTP_404_NOT_FOUND)
+        return None
+    return row
+
+
 class StudentSummaryView(APIView):
     """
     GET /api/v1.0.0/movil/student/summary/
@@ -1067,7 +1091,7 @@ class StudentChatContactsView(APIView):
 
     def get(self, request):
         resp = RespuestaApi()
-        est = _obtener_estudiante_actual(request, resp)
+        est = _obtener_persona_actual(request, resp)
         if est is None:
             return resp.to_dict()
 
@@ -1095,7 +1119,7 @@ class StudentChatConversationsView(APIView):
 
     def get(self, request):
         resp = RespuestaApi()
-        est = _obtener_estudiante_actual(request, resp)
+        est = _obtener_persona_actual(request, resp)
         if est is None:
             return resp.to_dict()
 
@@ -1115,7 +1139,7 @@ class StudentChatConversationsView(APIView):
 
     def post(self, request):
         resp = RespuestaApi()
-        est = _obtener_estudiante_actual(request, resp)
+        est = _obtener_persona_actual(request, resp)
         if est is None:
             return resp.to_dict()
 
@@ -1157,7 +1181,7 @@ class StudentChatConversationDetailView(APIView):
 
     def get(self, request, conversation_id):
         resp = RespuestaApi()
-        est = _obtener_estudiante_actual(request, resp)
+        est = _obtener_persona_actual(request, resp)
         if est is None:
             return resp.to_dict()
 
@@ -1190,7 +1214,7 @@ class StudentChatMessagesView(APIView):
 
     def get(self, request, conversation_id):
         resp = RespuestaApi()
-        est = _obtener_estudiante_actual(request, resp)
+        est = _obtener_persona_actual(request, resp)
         if est is None:
             return resp.to_dict()
 
@@ -1220,7 +1244,7 @@ class StudentChatMessagesView(APIView):
 
     def post(self, request, conversation_id):
         resp = RespuestaApi()
-        est = _obtener_estudiante_actual(request, resp)
+        est = _obtener_persona_actual(request, resp)
         if est is None:
             return resp.to_dict()
 
@@ -1318,7 +1342,7 @@ class StudentChatReadView(APIView):
 
     def post(self, request, conversation_id):
         resp = RespuestaApi()
-        est = _obtener_estudiante_actual(request, resp)
+        est = _obtener_persona_actual(request, resp)
         if est is None:
             return resp.to_dict()
 

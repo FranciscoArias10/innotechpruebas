@@ -1543,9 +1543,58 @@ def enviar_push_a_usuario(usuario_id, titulo, cuerpo, datos=None):
 def obtener_contactos_chat(persona_id, periodo_id=None):
     """
     Retorna los contactos autorizados para mensajería:
-    - Docentes de las asignaturas que cursa el estudiante.
-    - Compañeros de aula (mismo nivel, paralelo y periodo).
+    - Si es docente: estudiantes que cursan sus materias y colegas docentes.
+    - Si es estudiante: docentes de sus asignaturas y compañeros de aula.
     """
+    prof_row = _query_one("SELECT id FROM ctr_profesor WHERE persona_id = %s AND status = TRUE LIMIT 1", [persona_id])
+    if prof_row:
+        sql_alumnos = """
+            SELECT DISTINCT
+                est_p.id as persona_id,
+                TRIM(COALESCE(est_p.nombres, '') || ' ' || COALESCE(est_p.apellido_1, '') || ' ' || COALESCE(est_p.apellido_2, '')) as nombre_completo,
+                COALESCE(est_p.correo, '') as correo,
+                COALESCE(est_p.foto, '') as foto,
+                STRING_AGG(DISTINCT asig.nombre, ', ') as info,
+                'companero' as tipo
+            FROM ctr_profesor prof
+            JOIN ctr_profesormateria pm ON pm.profesor_id = prof.id AND pm.status = TRUE
+            JOIN ctr_materia mat ON mat.id = pm.materia_id
+            JOIN ctr_asignaturamallacurricular amc ON amc.id = mat.asignaturamalla_id
+            JOIN ctr_asignatura asig ON asig.id = amc.asignatura_id
+            JOIN ctr_materiaasignada ma ON ma.materia_id = mat.id AND ma.status = TRUE
+            JOIN ctr_nivelmatriculdo nm ON nm.id = ma.nivelmatriculado_id AND nm.status = TRUE
+            JOIN ctr_matricula m ON m.id = nm.matricula_id AND m.status = TRUE
+            JOIN ctr_estudiante e ON e.id = m.estudiante_id AND e.status = TRUE
+            JOIN ctr_persona est_p ON est_p.id = e.persona_id
+            WHERE prof.persona_id = %s
+            GROUP BY est_p.id, est_p.nombres, est_p.apellido_1, est_p.apellido_2, est_p.correo, est_p.foto
+            ORDER BY nombre_completo ASC
+        """
+        alumnos = _query_all(sql_alumnos, [persona_id])
+
+        sql_colegas = """
+            SELECT DISTINCT
+                p.id as persona_id,
+                TRIM(COALESCE(p.nombres, '') || ' ' || COALESCE(p.apellido_1, '') || ' ' || COALESCE(p.apellido_2, '')) as nombre_completo,
+                COALESCE(p.correo, '') as correo,
+                COALESCE(p.foto, '') as foto,
+                'Docente' as info,
+                'docente' as tipo
+            FROM ctr_profesor pr
+            JOIN ctr_persona p ON p.id = pr.persona_id AND p.status = TRUE
+            WHERE pr.persona_id != %s AND pr.status = TRUE
+            ORDER BY nombre_completo ASC
+        """
+        colegas = _query_all(sql_colegas, [persona_id])
+
+        todos = colegas + alumnos
+        return {
+            'total': len(todos),
+            'docentes': colegas,
+            'companeros': alumnos,
+            'contacts': todos
+        }
+
     # 1. Docentes
     sql_docentes = """
         SELECT 
