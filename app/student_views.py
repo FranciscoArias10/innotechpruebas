@@ -1225,6 +1225,18 @@ class StudentChatMessagesView(APIView):
 
         try:
             data = obtener_mensajes_conversacion(est['persona_id'], int(conversation_id), limite, antes_de_id)
+            import time
+            now = time.time()
+            conv_id = int(conversation_id)
+            my_id = est['persona_id']
+            other_typing = False
+            for (c_id, p_id), t_stamp in list(_TYPING_CACHE.items()):
+                if c_id == conv_id and p_id != my_id:
+                    if now - t_stamp < 4.5:
+                        other_typing = True
+                        break
+            if isinstance(data, dict):
+                data['other_typing'] = other_typing
             resp.set_success(True)
             resp.set_message('Mensajes recuperados.')
             resp.set_data(data)
@@ -1361,18 +1373,56 @@ class StudentChatReadView(APIView):
         return resp.to_dict()
 
 
+_TYPING_CACHE = {}
+
 class StudentChatTypingView(APIView):
     """
     POST /api/v1.0.0/chat/conversations/<id>/typing/
+    GET  /api/v1.0.0/chat/conversations/<id>/typing/
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request, conversation_id):
         resp = RespuestaApi()
+        est = _obtener_persona_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
         is_typing = bool(request.data.get('is_typing', True))
+        import time
+        now = time.time()
+        _TYPING_CACHE[(int(conversation_id), est['persona_id'])] = now if is_typing else 0
+
         resp.set_success(True)
         resp.set_message('Estado de escritura registrado.')
         resp.set_data({'conversation_id': int(conversation_id), 'is_typing': is_typing})
+        resp.set_status(status.HTTP_200_OK)
+        return resp.to_dict()
+
+    def get(self, request, conversation_id):
+        resp = RespuestaApi()
+        est = _obtener_persona_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        import time
+        now = time.time()
+        conv_id = int(conversation_id)
+        my_id = est['persona_id']
+
+        other_typing = False
+        for (c_id, p_id), t_stamp in list(_TYPING_CACHE.items()):
+            if c_id == conv_id and p_id != my_id:
+                if now - t_stamp < 4.5:
+                    other_typing = True
+                    break
+
+        resp.set_success(True)
+        resp.set_message('Estado obtenido.')
+        resp.set_data({
+            'conversation_id': conv_id,
+            'is_typing': other_typing,
+        })
         resp.set_status(status.HTTP_200_OK)
         return resp.to_dict()
 
