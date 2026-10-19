@@ -471,8 +471,8 @@ def generar_horario_html(persona_id, periodo_id, datos_horario):
     <div class="doc-header">
         <div>
             <div class="doc-brand">SISTEMA INTEGRADO DE GESTIÓN EDUCATIVA · UNIEBEC</div>
-            <div class="doc-title">Horario Oficial de Clases · {periodo_nombre}</div>
-            <div class="doc-sub">Alumno: <b>{nombre_est}</b> · Fecha de emisión: {datetime.now().strftime("%d/%m/%Y %H:%M")}</div>
+            <div class="doc-title">HORARIO OFICIAL DE CLASES - ACADEMICO</div>
+            <div class="doc-sub">Alumno: <b>{nombre_est.upper()}</b> · Fecha de emisión: {datetime.now().strftime("%d/%m/%Y %H:%M")}</div>
         </div>
         <div class="doc-badge">HORARIO OFICIAL</div>
     </div>
@@ -625,8 +625,8 @@ def generar_horario_pdf_reportlab_fallback(persona_id, periodo_id, datos_horario
     elementos = []
     elementos.append(Paragraph('UNIDAD EDUCATIVA BOLIVARIANA', titulo_style))
     elementos.append(Spacer(1, 2))
-    elementos.append(Paragraph(f'HORARIO OFICIAL DE CLASES · {periodo_nombre}', subtitulo_style))
-    elementos.append(Paragraph(f'Alumno: <b>{nombre_est}</b> · Fecha de emisión: {datetime.now().strftime("%d/%m/%Y %H:%M")}', subtitulo_style))
+    elementos.append(Paragraph('HORARIO OFICIAL DE CLASES - ACADEMICO', subtitulo_style))
+    elementos.append(Paragraph(f'Alumno: <b>{nombre_est.upper()}</b> · Fecha de emisión: {datetime.now().strftime("%d/%m/%Y %H:%M")}', subtitulo_style))
     elementos.append(Spacer(1, 8))
 
     dias_titulos = ['HORA', 'LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES']
@@ -727,7 +727,7 @@ def generar_horario_pdf_puro_python(persona_id, periodo_id, datos_horario):
 
     lineas = [
         'UNIDAD EDUCATIVA BOLIVARIANA - UNIEBEC',
-        f'HORARIO OFICIAL DE CLASES - {periodo_nombre}',
+        'HORARIO OFICIAL DE CLASES - ACADEMICO',
         f'Alumno: {nombre_est}',
         '--------------------------------------------------------------------------------'
     ]
@@ -778,27 +778,24 @@ def generar_horario_pdf_puro_python(persona_id, periodo_id, datos_horario):
     return header + body + xref + trailer
 
 def generar_horario_pdf(persona_id, periodo_id, datos_horario):
-    # 1. Intentar Chromium / Chrome / Edge tanto en Windows como en Linux
-    candidatos_browser = [
+    # 1. Intentar Chromium / Google Chrome / Microsoft Edge en Windows o Linux
+    candidate_browsers = [
         shutil.which('chromium'),
         shutil.which('google-chrome'),
         shutil.which('chromium-browser'),
         shutil.which('chrome'),
         shutil.which('msedge'),
-        '/usr/bin/chromium',
-        '/usr/bin/google-chrome',
-        r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
-        r'C:\Program Files\Microsoft\Edge\Application\msedge.exe',
         r'C:\Program Files\Google\Chrome\Application\chrome.exe',
         r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
+        r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
+        r'C:\Program Files\Microsoft\Edge\Application\msedge.exe',
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser',
+        '/usr/bin/google-chrome',
+        '/snap/bin/chromium',
     ]
-    chromium_path = None
-    for cand in candidatos_browser:
-        if cand and os.path.exists(cand):
-            chromium_path = cand
-            break
-
-    if chromium_path:
+    chromium_path = next((b for b in candidate_browsers if b and os.path.exists(b)), None)
+    if chromium_path and os.path.exists(chromium_path):
         try:
             html_content = generar_horario_html(persona_id, periodo_id, datos_horario)
             with tempfile.NamedTemporaryFile('w', suffix='.html', delete=False, encoding='utf-8') as f_html:
