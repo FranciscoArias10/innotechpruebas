@@ -2209,3 +2209,248 @@ class StudentSubjectInquiriesView(APIView):
             respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return respuesta.to_dict()
+
+
+# ==============================================================================
+# TAREA 16: BALCÓN DE SERVICIOS Y DOCUMENTOS ESTUDIANTILES
+# ==============================================================================
+
+class StudentServiceTypesView(APIView):
+    """
+    GET /api/v1.0.0/student/services/types/
+
+    Retorna el catálogo disponible de certificados, tipos de trámites y materias
+    para crear nuevas solicitudes en el Balcón de Servicios.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        respuesta = RespuestaApi()
+        est = _obtener_estudiante_actual(request, respuesta)
+        if est is None:
+            return respuesta.to_dict()
+
+        try:
+            from app.student_ports import obtener_catalogo_servicios_estudiante
+            data = obtener_catalogo_servicios_estudiante(est['persona_id'])
+            respuesta.set_success(True)
+            respuesta.set_message("Catálogo de servicios y trámites obtenido exitosamente.")
+            respuesta.set_data(data)
+            respuesta.set_status(status.HTTP_200_OK)
+        except Exception as e:
+            respuesta.set_success(False)
+            respuesta.set_message("Error al obtener catálogo de servicios.")
+            respuesta.set_errors({'error': [str(e)]})
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return respuesta.to_dict()
+
+
+class StudentServiceRequestsView(APIView):
+    """
+    GET /api/v1.0.0/student/services/requests/
+    POST /api/v1.0.0/student/services/requests/
+
+    Lista las solicitudes del estudiante con filtros y permite registrar una nueva solicitud
+    en ctr_solicitudservicio con adjuntos opcionales.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        respuesta = RespuestaApi()
+        est = _obtener_estudiante_actual(request, respuesta)
+        if est is None:
+            return respuesta.to_dict()
+
+        estado = request.query_params.get('estado')
+        tipo = request.query_params.get('tipo')
+
+        try:
+            from app.student_ports import obtener_solicitudes_servicio_estudiante
+            data = obtener_solicitudes_servicio_estudiante(est['persona_id'], estado=estado, tipo=tipo)
+            respuesta.set_success(True)
+            respuesta.set_message("Solicitudes de servicio obtenidas exitosamente.")
+            respuesta.set_data(data)
+            respuesta.set_status(status.HTTP_200_OK)
+        except Exception as e:
+            respuesta.set_success(False)
+            respuesta.set_message("Error al consultar las solicitudes de servicio.")
+            respuesta.set_errors({'error': [str(e)]})
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return respuesta.to_dict()
+
+    def post(self, request):
+        respuesta = RespuestaApi()
+        est = _obtener_estudiante_actual(request, respuesta)
+        if est is None:
+            return respuesta.to_dict()
+
+        from app.serializers import SolicitudServicioCrearSerializer
+        serializer = SolicitudServicioCrearSerializer(data=request.data)
+        if not serializer.is_valid():
+            respuesta.set_success(False)
+            respuesta.set_message("Datos de solicitud inválidos.")
+            respuesta.set_errors(serializer.errors)
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+            return respuesta.to_dict()
+
+        archivos = (
+            request.FILES.getlist('adjuntos')
+            or request.FILES.getlist('archivo')
+            or request.FILES.getlist('files')
+            or request.FILES.getlist('file')
+        )
+        if not archivos and request.FILES.get('archivo'):
+            archivos = [request.FILES.get('archivo')]
+        elif not archivos and request.FILES.get('file'):
+            archivos = [request.FILES.get('file')]
+
+        try:
+            from app.student_ports import crear_solicitud_servicio_estudiante
+            nueva_sol = crear_solicitud_servicio_estudiante(
+                est['persona_id'],
+                request.user.id,
+                serializer.validated_data,
+                archivos_adjuntos=archivos
+            )
+            respuesta.set_success(True)
+            respuesta.set_message("Solicitud de servicio registrada exitosamente. Secretaría atenderá tu trámite.")
+            respuesta.set_data(nueva_sol)
+            respuesta.set_status(status.HTTP_201_CREATED)
+        except LookupError as e:
+            respuesta.set_success(False)
+            respuesta.set_message(str(e))
+            respuesta.set_status(status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            respuesta.set_success(False)
+            respuesta.set_message("Error al registrar la solicitud de servicio.")
+            respuesta.set_errors({'error': [str(e)]})
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return respuesta.to_dict()
+
+
+class StudentServiceRequestDetailView(APIView):
+    """
+    GET /api/v1.0.0/student/services/requests/<int:solicitud_id>/
+
+    Detalle exhaustivo de una solicitud, estado de atención, adjuntos y descarga de certificado final.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, solicitud_id):
+        respuesta = RespuestaApi()
+        est = _obtener_estudiante_actual(request, respuesta)
+        if est is None:
+            return respuesta.to_dict()
+
+        try:
+            from app.student_ports import obtener_detalle_solicitud_servicio
+            data = obtener_detalle_solicitud_servicio(est['persona_id'], int(solicitud_id))
+            respuesta.set_success(True)
+            respuesta.set_message("Detalle de la solicitud recuperado con éxito.")
+            respuesta.set_data(data)
+            respuesta.set_status(status.HTTP_200_OK)
+        except LookupError as e:
+            respuesta.set_success(False)
+            respuesta.set_message(str(e))
+            respuesta.set_status(status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            respuesta.set_success(False)
+            respuesta.set_message("Error al obtener detalle de la solicitud.")
+            respuesta.set_errors({'error': [str(e)]})
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return respuesta.to_dict()
+
+
+class StudentDocumentsView(APIView):
+    """
+    GET /api/v1.0.0/student/documents/
+
+    Retorna los requerimientos documentales asignados por Secretaría,
+    el historial de documentos cargados y el catálogo de tipos de documento.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        respuesta = RespuestaApi()
+        est = _obtener_estudiante_actual(request, respuesta)
+        if est is None:
+            return respuesta.to_dict()
+
+        try:
+            from app.student_ports import obtener_documentos_y_requerimientos_estudiante
+            data = obtener_documentos_y_requerimientos_estudiante(est['persona_id'])
+            respuesta.set_success(True)
+            respuesta.set_message("Documentos y requerimientos recuperados exitosamente.")
+            respuesta.set_data(data)
+            respuesta.set_status(status.HTTP_200_OK)
+        except Exception as e:
+            respuesta.set_success(False)
+            respuesta.set_message("Error al consultar documentos del estudiante.")
+            respuesta.set_errors({'error': [str(e)]})
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return respuesta.to_dict()
+
+
+class StudentDocumentUploadView(APIView):
+    """
+    POST /api/v1.0.0/student/documents/upload/
+
+    Permite al estudiante cargar un archivo para atender un requerimiento de Secretaría.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        respuesta = RespuestaApi()
+        est = _obtener_estudiante_actual(request, respuesta)
+        if est is None:
+            return respuesta.to_dict()
+
+        from app.serializers import DocumentoEstudianteSubirSerializer
+        serializer = DocumentoEstudianteSubirSerializer(data=request.data)
+        if not serializer.is_valid():
+            respuesta.set_success(False)
+            respuesta.set_message("Datos de carga de documento inválidos.")
+            respuesta.set_errors(serializer.errors)
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+            return respuesta.to_dict()
+
+        archivo = request.FILES.get('archivo') or request.FILES.get('file') or request.FILES.get('documento')
+        if not archivo:
+            respuesta.set_success(False)
+            respuesta.set_message("Debes adjuntar el archivo del documento (PDF o imagen).")
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+            return respuesta.to_dict()
+
+        tipo_id = serializer.validated_data['tipo_id']
+        observacion = serializer.validated_data.get('observacion', '')
+
+        try:
+            from app.student_ports import subir_documento_estudiante
+            nuevo_doc = subir_documento_estudiante(
+                est['persona_id'],
+                request.user.id,
+                tipo_id,
+                archivo,
+                observacion=observacion
+            )
+            respuesta.set_success(True)
+            respuesta.set_message("Documento subido exitosamente. Secretaría revisará tu entrega.")
+            respuesta.set_data(nuevo_doc)
+            respuesta.set_status(status.HTTP_201_CREATED)
+        except LookupError as e:
+            respuesta.set_success(False)
+            respuesta.set_message(str(e))
+            respuesta.set_status(status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            respuesta.set_success(False)
+            respuesta.set_message("Error al subir el documento institucional.")
+            respuesta.set_errors({'error': [str(e)]})
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return respuesta.to_dict()
+
