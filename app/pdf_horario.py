@@ -778,9 +778,27 @@ def generar_horario_pdf_puro_python(persona_id, periodo_id, datos_horario):
     return header + body + xref + trailer
 
 def generar_horario_pdf(persona_id, periodo_id, datos_horario):
-    # 1. Intentar Chromium / Chrome si está disponible en el servidor
-    chromium_path = shutil.which('chromium') or shutil.which('google-chrome') or shutil.which('chromium-browser') or ('/usr/bin/chromium' if os.path.exists('/usr/bin/chromium') else None)
-    if chromium_path and os.path.exists(chromium_path):
+    # 1. Intentar Chromium / Chrome / Edge tanto en Windows como en Linux
+    candidatos_browser = [
+        shutil.which('chromium'),
+        shutil.which('google-chrome'),
+        shutil.which('chromium-browser'),
+        shutil.which('chrome'),
+        shutil.which('msedge'),
+        '/usr/bin/chromium',
+        '/usr/bin/google-chrome',
+        r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
+        r'C:\Program Files\Microsoft\Edge\Application\msedge.exe',
+        r'C:\Program Files\Google\Chrome\Application\chrome.exe',
+        r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
+    ]
+    chromium_path = None
+    for cand in candidatos_browser:
+        if cand and os.path.exists(cand):
+            chromium_path = cand
+            break
+
+    if chromium_path:
         try:
             html_content = generar_horario_html(persona_id, periodo_id, datos_horario)
             with tempfile.NamedTemporaryFile('w', suffix='.html', delete=False, encoding='utf-8') as f_html:
