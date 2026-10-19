@@ -9,10 +9,14 @@ from datetime import datetime
 from django.db import connection
 
 # Fallback imports ReportLab
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter, landscape
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+try:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter, landscape
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    HAY_REPORTLAB = True
+except ImportError:
+    HAY_REPORTLAB = False
 
 def normalizar_texto(txt):
     if not txt:
@@ -108,13 +112,14 @@ def generar_horario_html(persona_id, periodo_id, datos_horario):
     sql_est = """
         SELECT 
             p.nombres, p.apellido_1, p.apellido_2,
-            per.nombre as periodo_nombre
+            COALESCE(per.nombre, pl.nombre, 'Periodo Académico') as periodo_nombre
         FROM ctr_persona p
         LEFT JOIN ctr_periodo per ON per.id = %s
+        LEFT JOIN ctr_periodolectivo pl ON (pl.id = %s OR pl.periodo_id = %s)
         WHERE p.id = %s
     """
     with connection.cursor() as cur:
-        cur.execute(sql_est, [periodo_id, persona_id])
+        cur.execute(sql_est, [periodo_id, periodo_id, periodo_id, persona_id])
         row = cur.fetchone()
 
     nombre_est = 'Alumno'
@@ -568,13 +573,14 @@ def generar_horario_pdf_reportlab_fallback(persona_id, periodo_id, datos_horario
     sql_est = """
         SELECT 
             p.nombres, p.apellido_1, p.apellido_2,
-            per.nombre as periodo_nombre
+            COALESCE(per.nombre, pl.nombre, 'Periodo Académico') as periodo_nombre
         FROM ctr_persona p
         LEFT JOIN ctr_periodo per ON per.id = %s
+        LEFT JOIN ctr_periodolectivo pl ON (pl.id = %s OR pl.periodo_id = %s)
         WHERE p.id = %s
     """
     with connection.cursor() as cur:
-        cur.execute(sql_est, [periodo_id, persona_id])
+        cur.execute(sql_est, [periodo_id, periodo_id, periodo_id, persona_id])
         row = cur.fetchone()
     
     nombre_est = 'Alumno'
@@ -692,42 +698,129 @@ def generar_horario_pdf_reportlab_fallback(persona_id, periodo_id, datos_horario
     doc.build(elementos)
     return buffer.getvalue()
 
-def generar_horario_pdf(persona_id, periodo_id, datos_horario):
-    chromium_path = shutil.which('chromium') or shutil.which('google-chrome') or shutil.which('chromium-browser') or ('/usr/bin/chromium' if os.path.exists('/usr/bin/chromium') else None)
-    if not (chromium_path and os.path.exists(chromium_path)):
-        return generar_horario_pdf_reportlab_fallback(persona_id, periodo_id, datos_horario)
 
+
+
+def generar_horario_pdf_puro_python(persona_id, periodo_id, datos_horario):
+    nombre_est = 'Alumno'
+    periodo_nombre = 'Periodo Academico'
     try:
-        html_content = generar_horario_html(persona_id, periodo_id, datos_horario)
-        with tempfile.NamedTemporaryFile('w', suffix='.html', delete=False, encoding='utf-8') as f_html:
-            f_html.write(html_content)
-            html_path = f_html.name
-
-        pdf_path = html_path.replace('.html', '.pdf')
-        cmd = [
-            chromium_path,
-            '--headless=new',
-            '--disable-gpu',
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--no-pdf-header-footer',
-            f'--print-to-pdf={pdf_path}',
-            html_path
-        ]
-        res = subprocess.run(cmd, capture_output=True, timeout=15)
-        if res.returncode == 0 and os.path.exists(pdf_path):
-            with open(pdf_path, 'rb') as f_pdf:
-                pdf_bytes = f_pdf.read()
-            return pdf_bytes
-        else:
-            return generar_horario_pdf_reportlab_fallback(persona_id, periodo_id, datos_horario)
+        from django.db import connection
+        sql_est = """
+            SELECT 
+                p.nombres, p.apellido_1, p.apellido_2,
+                COALESCE(per.nombre, pl.nombre, 'Periodo Academico') as periodo_nombre
+            FROM ctr_persona p
+            LEFT JOIN ctr_periodo per ON per.id = %s
+            LEFT JOIN ctr_periodolectivo pl ON (pl.id = %s OR pl.periodo_id = %s)
+            WHERE p.id = %s
+        """
+        with connection.cursor() as cur:
+            cur.execute(sql_est, [periodo_id, periodo_id, periodo_id, persona_id])
+            row = cur.fetchone()
+        if row:
+            apellidos = f"{row[1] or ''} {row[2] or ''}".strip()
+            nombre_est = f"{row[0] or ''} {apellidos}".strip() or 'Alumno'
+            periodo_nombre = row[3] or 'Periodo Academico'
     except Exception:
-        return generar_horario_pdf_reportlab_fallback(persona_id, periodo_id, datos_horario)
-    finally:
+        pass
+
+    lineas = [
+        'UNIDAD EDUCATIVA BOLIVARIANA - UNIEBEC',
+        f'HORARIO OFICIAL DE CLASES - {periodo_nombre}',
+        f'Alumno: {nombre_est}',
+        '--------------------------------------------------------------------------------'
+    ]
+
+    dias_visibles = datos_horario.get('dias_visibles', []) if isinstance(datos_horario, dict) else []
+    hay_clases = False
+    for d in dias_visibles:
+        clases = d.get('clases', [])
+        if clases:
+            hay_clases = True
+            lineas.append(f"== {d.get('nombre', 'DIA')} ==")
+            for c in clases:
+                ini = c.get('inicio', '')
+                fin = c.get('fin', '')
+                mat = c.get('nombre', '')
+                prof = c.get('profesor') or c.get('docente') or 'Docente Asignado'
+                lineas.append(f"  {ini} - {fin} | {mat} | Prof: {prof}")
+            lineas.append('')
+
+    if not hay_clases:
+        lineas.append('No hay clases programadas para este periodo.')
+
+    stream_lines = ['BT', '/F1 11 Tf', '40 750 Td', '15 TL']
+    for l in lineas:
+        l_escaped = l.replace('\\', '').replace('(', r'\(').replace(')', r'\)')
+        stream_lines.append(f"({l_escaped}) '")
+    stream_lines.append('ET')
+    stream = '\n'.join(stream_lines).encode('latin1', 'replace')
+
+    obj1 = b'1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n'
+    obj2 = b'2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n'
+    obj3 = b'3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n'
+    obj4 = f'4 0 obj\n<< /Length {len(stream)} >>\nstream\n'.encode('latin1') + stream + b'\nendstream\nendobj\n'
+    obj5 = b'5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n'
+
+    header = b'%PDF-1.4\n'
+    offsets = [0]
+    body = b''
+    for obj in [obj1, obj2, obj3, obj4, obj5]:
+        offsets.append(len(header) + len(body))
+        body += obj
+
+    xref_offset = len(header) + len(body)
+    xref = f'xref\n0 {len(offsets)}\n0000000000 65535 f \n'.encode('latin1')
+    for off in offsets[1:]:
+        xref += f'{off:010d} 00000 n \n'.encode('latin1')
+    trailer = f'trailer\n<< /Size {len(offsets)} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n'.encode('latin1')
+    return header + body + xref + trailer
+
+def generar_horario_pdf(persona_id, periodo_id, datos_horario):
+    # 1. Intentar Chromium / Chrome si está disponible en el servidor
+    chromium_path = shutil.which('chromium') or shutil.which('google-chrome') or shutil.which('chromium-browser') or ('/usr/bin/chromium' if os.path.exists('/usr/bin/chromium') else None)
+    if chromium_path and os.path.exists(chromium_path):
         try:
-            if 'html_path' in locals() and os.path.exists(html_path):
-                os.remove(html_path)
-            if 'pdf_path' in locals() and os.path.exists(pdf_path):
-                os.remove(pdf_path)
+            html_content = generar_horario_html(persona_id, periodo_id, datos_horario)
+            with tempfile.NamedTemporaryFile('w', suffix='.html', delete=False, encoding='utf-8') as f_html:
+                f_html.write(html_content)
+                html_path = f_html.name
+
+            pdf_path = html_path.replace('.html', '.pdf')
+            cmd = [
+                chromium_path,
+                '--headless=new',
+                '--disable-gpu',
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--no-pdf-header-footer',
+                f'--print-to-pdf={pdf_path}',
+                html_path
+            ]
+            res = subprocess.run(cmd, capture_output=True, timeout=15)
+            if res.returncode == 0 and os.path.exists(pdf_path):
+                with open(pdf_path, 'rb') as f_pdf:
+                    pdf_bytes = f_pdf.read()
+                return pdf_bytes
         except Exception:
             pass
+        finally:
+            try:
+                if 'html_path' in locals() and os.path.exists(html_path):
+                    os.remove(html_path)
+                if 'pdf_path' in locals() and os.path.exists(pdf_path):
+                    os.remove(pdf_path)
+            except Exception:
+                pass
+
+    # 2. Fallback con ReportLab si está instalado
+    if HAY_REPORTLAB:
+        try:
+            return generar_horario_pdf_reportlab_fallback(persona_id, periodo_id, datos_horario)
+        except Exception:
+            pass
+
+    # 3. Fallback en Python Puro (100% garantizado sin dependencias)
+    return generar_horario_pdf_puro_python(persona_id, periodo_id, datos_horario)
+

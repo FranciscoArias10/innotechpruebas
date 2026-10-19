@@ -113,3 +113,76 @@ class ConsultaDocenteCrearSerializer(serializers.Serializer):
         }
     )
 
+class SolicitudServicioCrearSerializer(serializers.Serializer):
+    """Valida el cuerpo para registrar una nueva solicitud en el Balcón de Servicios (Tarea 16)."""
+
+    tipo = serializers.ChoiceField(
+        choices=['CERTIFICADO', 'JUSTIFICACION_FALTA', 'EVALUACION_ATRASADA', 'OTRO_TRAMITE'],
+        error_messages={'invalid_choice': 'El tipo de solicitud seleccionado no es válido.'}
+    )
+    subtipo_certificado = serializers.CharField(
+        max_length=60,
+        required=False,
+        allow_blank=True,
+        default=''
+    )
+    materia_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        default=None
+    )
+    motivo = serializers.CharField(
+        max_length=255,
+        min_length=3,
+        allow_blank=False,
+        trim_whitespace=True,
+        error_messages={
+            'blank': 'El motivo de la solicitud no puede estar vacío.',
+            'required': 'El campo motivo es obligatorio.',
+            'max_length': 'El motivo no puede exceder los 255 caracteres.',
+            'min_length': 'El motivo debe tener al menos 3 caracteres.',
+        }
+    )
+    motivo_detalle = serializers.CharField(
+        max_length=5000,
+        required=False,
+        allow_blank=True,
+        default=''
+    )
+    falta_desde = serializers.DateField(
+        required=False,
+        allow_null=True,
+        default=None
+    )
+    falta_hasta = serializers.DateField(
+        required=False,
+        allow_null=True,
+        default=None
+    )
+    fecha_evaluacion = serializers.DateField(
+        required=False,
+        allow_null=True,
+        default=None
+    )
+    modalidad_evaluacion = serializers.CharField(
+        max_length=30,
+        required=False,
+        allow_blank=True,
+        default=''
+    )
+
+
+class DocumentoEstudianteSubirSerializer(serializers.Serializer):
+    """Valida los metadatos para subir un documento del estudiante requerido por Secretaría (Tarea 16)."""
+
+    tipo_id = serializers.IntegerField(
+        min_value=1,
+        error_messages={'required': 'El tipo de documento es obligatorio.'}
+    )
+    observacion = serializers.CharField(
+        max_length=1000,
+        required=False,
+        allow_blank=True,
+        default=''
+    )
+

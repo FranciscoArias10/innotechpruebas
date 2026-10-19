@@ -63,6 +63,30 @@ def _obtener_estudiante_actual(request, respuesta):
     return est
 
 
+def _obtener_persona_actual(request, respuesta):
+    """
+    Obtiene los datos de la persona asociada a request.user (estudiante, docente o personal).
+    Permite acceso transversal a modulos como chat.
+    """
+    from app.student_ports import _query_one
+    sql = """
+        SELECT p.id as persona_id,
+               p.nombres, p.apellido_1, p.apellido_2,
+               TRIM(p.nombres || ' ' || p.apellido_1 || ' ' || COALESCE(p.apellido_2, '')) as nombre_completo,
+               p.cedula, p.correo_institucional
+        FROM ctr_persona p
+        WHERE p.usuario_id = %s AND p.status = TRUE
+        LIMIT 1
+    """
+    row = _query_one(sql, [request.user.id])
+    if not row:
+        respuesta.set_success(False)
+        respuesta.set_message('No se encontró una persona asociada a tu cuenta de usuario.')
+        respuesta.set_status(status.HTTP_404_NOT_FOUND)
+        return None
+    return row
+
+
 class StudentSummaryView(APIView):
     """
     GET /api/v1.0.0/movil/student/summary/
@@ -1068,7 +1092,7 @@ class StudentChatContactsView(APIView):
 
     def get(self, request):
         resp = RespuestaApi()
-        est = _obtener_estudiante_actual(request, resp)
+        est = _obtener_persona_actual(request, resp)
         if est is None:
             return resp.to_dict()
 
@@ -1096,7 +1120,7 @@ class StudentChatConversationsView(APIView):
 
     def get(self, request):
         resp = RespuestaApi()
-        est = _obtener_estudiante_actual(request, resp)
+        est = _obtener_persona_actual(request, resp)
         if est is None:
             return resp.to_dict()
 
@@ -1116,7 +1140,7 @@ class StudentChatConversationsView(APIView):
 
     def post(self, request):
         resp = RespuestaApi()
-        est = _obtener_estudiante_actual(request, resp)
+        est = _obtener_persona_actual(request, resp)
         if est is None:
             return resp.to_dict()
 
@@ -1158,7 +1182,7 @@ class StudentChatConversationDetailView(APIView):
 
     def get(self, request, conversation_id):
         resp = RespuestaApi()
-        est = _obtener_estudiante_actual(request, resp)
+        est = _obtener_persona_actual(request, resp)
         if est is None:
             return resp.to_dict()
 
@@ -1191,7 +1215,7 @@ class StudentChatMessagesView(APIView):
 
     def get(self, request, conversation_id):
         resp = RespuestaApi()
-        est = _obtener_estudiante_actual(request, resp)
+        est = _obtener_persona_actual(request, resp)
         if est is None:
             return resp.to_dict()
 
@@ -1202,6 +1226,18 @@ class StudentChatMessagesView(APIView):
 
         try:
             data = obtener_mensajes_conversacion(est['persona_id'], int(conversation_id), limite, antes_de_id)
+            import time
+            now = time.time()
+            conv_id = int(conversation_id)
+            my_id = est['persona_id']
+            other_typing = False
+            for (c_id, p_id), t_stamp in list(_TYPING_CACHE.items()):
+                if c_id == conv_id and p_id != my_id:
+                    if now - t_stamp < 4.5:
+                        other_typing = True
+                        break
+            if isinstance(data, dict):
+                data['other_typing'] = other_typing
             resp.set_success(True)
             resp.set_message('Mensajes recuperados.')
             resp.set_data(data)
@@ -1221,7 +1257,7 @@ class StudentChatMessagesView(APIView):
 
     def post(self, request, conversation_id):
         resp = RespuestaApi()
-        est = _obtener_estudiante_actual(request, resp)
+        est = _obtener_persona_actual(request, resp)
         if est is None:
             return resp.to_dict()
 
@@ -1253,6 +1289,7 @@ class StudentChatMessagesView(APIView):
         if archivos_subidos:
             import os
             import datetime
+            from urllib.parse import unquote
             from django.core.files.storage import default_storage
             from django.utils.text import get_valid_filename
             from django.conf import settings
@@ -1261,21 +1298,50 @@ class StudentChatMessagesView(APIView):
                 tipo = 'file'
 
             for f in archivos_subidos:
-                nombre_limpio = get_valid_filename(f.name)
+                # Decodificar el nombre si viene con codificación de URL (%20, %C3%81, etc.)
+                try:
+                    nombre_real = unquote(f.name)
+                except Exception:
+                    nombre_real = f.name
+
+                nombre_limpio = get_valid_filename(nombre_real)
                 timestamp = int(datetime.datetime.now().timestamp())
                 subruta = os.path.join('chat', f"{est['persona_id']}_{timestamp}_{nombre_limpio}")
                 ruta_guardada = default_storage.save(subruta, f)
                 url_rel = f"{settings.MEDIA_URL}{ruta_guardada}".replace('//', '/')
                 url_archivo = request.build_absolute_uri(url_rel)
 
+                # Deducir MIME type adecuado según la extensión
+                content_type = getattr(f, 'content_type', '') or ''
+                ext = (nombre_real.split('.')[-1] if '.' in nombre_real else '').lower()
+                if not content_type or content_type == 'application/octet-stream':
+                    if ext == 'docx':
+                        content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                    elif ext == 'doc':
+                        content_type = 'application/msword'
+                    elif ext == 'pdf':
+                        content_type = 'application/pdf'
+                    elif ext == 'xlsx':
+                        content_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                    elif ext == 'xls':
+                        content_type = 'application/vnd.ms-excel'
+                    elif ext == 'pptx':
+                        content_type = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+                    elif ext == 'ppt':
+                        content_type = 'application/vnd.ms-powerpoint'
+                    elif ext in ('jpg', 'jpeg'):
+                        content_type = 'image/jpeg'
+                    elif ext == 'png':
+                        content_type = 'image/png'
+
                 adjuntos.append({
-                    'name': f.name,
+                    'name': nombre_real,
                     'url': url_archivo,
-                    'mime_type': getattr(f, 'content_type', '') or 'application/octet-stream',
+                    'mime_type': content_type or 'application/octet-stream',
                     'size': getattr(f, 'size', 0),
                     'metadata': {
                         'saved_path': ruta_guardada,
-                        'original_name': f.name,
+                        'original_name': nombre_real,
                     }
                 })
 
@@ -1319,7 +1385,7 @@ class StudentChatReadView(APIView):
 
     def post(self, request, conversation_id):
         resp = RespuestaApi()
-        est = _obtener_estudiante_actual(request, resp)
+        est = _obtener_persona_actual(request, resp)
         if est is None:
             return resp.to_dict()
 
@@ -1338,18 +1404,56 @@ class StudentChatReadView(APIView):
         return resp.to_dict()
 
 
+_TYPING_CACHE = {}
+
 class StudentChatTypingView(APIView):
     """
     POST /api/v1.0.0/chat/conversations/<id>/typing/
+    GET  /api/v1.0.0/chat/conversations/<id>/typing/
     """
     permission_classes = [IsAuthenticated]
 
     def post(self, request, conversation_id):
         resp = RespuestaApi()
+        est = _obtener_persona_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
         is_typing = bool(request.data.get('is_typing', True))
+        import time
+        now = time.time()
+        _TYPING_CACHE[(int(conversation_id), est['persona_id'])] = now if is_typing else 0
+
         resp.set_success(True)
         resp.set_message('Estado de escritura registrado.')
         resp.set_data({'conversation_id': int(conversation_id), 'is_typing': is_typing})
+        resp.set_status(status.HTTP_200_OK)
+        return resp.to_dict()
+
+    def get(self, request, conversation_id):
+        resp = RespuestaApi()
+        est = _obtener_persona_actual(request, resp)
+        if est is None:
+            return resp.to_dict()
+
+        import time
+        now = time.time()
+        conv_id = int(conversation_id)
+        my_id = est['persona_id']
+
+        other_typing = False
+        for (c_id, p_id), t_stamp in list(_TYPING_CACHE.items()):
+            if c_id == conv_id and p_id != my_id:
+                if now - t_stamp < 4.5:
+                    other_typing = True
+                    break
+
+        resp.set_success(True)
+        resp.set_message('Estado obtenido.')
+        resp.set_data({
+            'conversation_id': conv_id,
+            'is_typing': other_typing,
+        })
         resp.set_status(status.HTTP_200_OK)
         return resp.to_dict()
 
@@ -2106,3 +2210,248 @@ class StudentSubjectInquiriesView(APIView):
             respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return respuesta.to_dict()
+
+
+# ==============================================================================
+# TAREA 16: BALCÓN DE SERVICIOS Y DOCUMENTOS ESTUDIANTILES
+# ==============================================================================
+
+class StudentServiceTypesView(APIView):
+    """
+    GET /api/v1.0.0/student/services/types/
+
+    Retorna el catálogo disponible de certificados, tipos de trámites y materias
+    para crear nuevas solicitudes en el Balcón de Servicios.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        respuesta = RespuestaApi()
+        est = _obtener_estudiante_actual(request, respuesta)
+        if est is None:
+            return respuesta.to_dict()
+
+        try:
+            from app.student_ports import obtener_catalogo_servicios_estudiante
+            data = obtener_catalogo_servicios_estudiante(est['persona_id'])
+            respuesta.set_success(True)
+            respuesta.set_message("Catálogo de servicios y trámites obtenido exitosamente.")
+            respuesta.set_data(data)
+            respuesta.set_status(status.HTTP_200_OK)
+        except Exception as e:
+            respuesta.set_success(False)
+            respuesta.set_message("Error al obtener catálogo de servicios.")
+            respuesta.set_errors({'error': [str(e)]})
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return respuesta.to_dict()
+
+
+class StudentServiceRequestsView(APIView):
+    """
+    GET /api/v1.0.0/student/services/requests/
+    POST /api/v1.0.0/student/services/requests/
+
+    Lista las solicitudes del estudiante con filtros y permite registrar una nueva solicitud
+    en ctr_solicitudservicio con adjuntos opcionales.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        respuesta = RespuestaApi()
+        est = _obtener_estudiante_actual(request, respuesta)
+        if est is None:
+            return respuesta.to_dict()
+
+        estado = request.query_params.get('estado')
+        tipo = request.query_params.get('tipo')
+
+        try:
+            from app.student_ports import obtener_solicitudes_servicio_estudiante
+            data = obtener_solicitudes_servicio_estudiante(est['persona_id'], estado=estado, tipo=tipo)
+            respuesta.set_success(True)
+            respuesta.set_message("Solicitudes de servicio obtenidas exitosamente.")
+            respuesta.set_data(data)
+            respuesta.set_status(status.HTTP_200_OK)
+        except Exception as e:
+            respuesta.set_success(False)
+            respuesta.set_message("Error al consultar las solicitudes de servicio.")
+            respuesta.set_errors({'error': [str(e)]})
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return respuesta.to_dict()
+
+    def post(self, request):
+        respuesta = RespuestaApi()
+        est = _obtener_estudiante_actual(request, respuesta)
+        if est is None:
+            return respuesta.to_dict()
+
+        from app.serializers import SolicitudServicioCrearSerializer
+        serializer = SolicitudServicioCrearSerializer(data=request.data)
+        if not serializer.is_valid():
+            respuesta.set_success(False)
+            respuesta.set_message("Datos de solicitud inválidos.")
+            respuesta.set_errors(serializer.errors)
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+            return respuesta.to_dict()
+
+        archivos = (
+            request.FILES.getlist('adjuntos')
+            or request.FILES.getlist('archivo')
+            or request.FILES.getlist('files')
+            or request.FILES.getlist('file')
+        )
+        if not archivos and request.FILES.get('archivo'):
+            archivos = [request.FILES.get('archivo')]
+        elif not archivos and request.FILES.get('file'):
+            archivos = [request.FILES.get('file')]
+
+        try:
+            from app.student_ports import crear_solicitud_servicio_estudiante
+            nueva_sol = crear_solicitud_servicio_estudiante(
+                est['persona_id'],
+                request.user.id,
+                serializer.validated_data,
+                archivos_adjuntos=archivos
+            )
+            respuesta.set_success(True)
+            respuesta.set_message("Solicitud de servicio registrada exitosamente. Secretaría atenderá tu trámite.")
+            respuesta.set_data(nueva_sol)
+            respuesta.set_status(status.HTTP_201_CREATED)
+        except LookupError as e:
+            respuesta.set_success(False)
+            respuesta.set_message(str(e))
+            respuesta.set_status(status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            respuesta.set_success(False)
+            respuesta.set_message("Error al registrar la solicitud de servicio.")
+            respuesta.set_errors({'error': [str(e)]})
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return respuesta.to_dict()
+
+
+class StudentServiceRequestDetailView(APIView):
+    """
+    GET /api/v1.0.0/student/services/requests/<int:solicitud_id>/
+
+    Detalle exhaustivo de una solicitud, estado de atención, adjuntos y descarga de certificado final.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, solicitud_id):
+        respuesta = RespuestaApi()
+        est = _obtener_estudiante_actual(request, respuesta)
+        if est is None:
+            return respuesta.to_dict()
+
+        try:
+            from app.student_ports import obtener_detalle_solicitud_servicio
+            data = obtener_detalle_solicitud_servicio(est['persona_id'], int(solicitud_id))
+            respuesta.set_success(True)
+            respuesta.set_message("Detalle de la solicitud recuperado con éxito.")
+            respuesta.set_data(data)
+            respuesta.set_status(status.HTTP_200_OK)
+        except LookupError as e:
+            respuesta.set_success(False)
+            respuesta.set_message(str(e))
+            respuesta.set_status(status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            respuesta.set_success(False)
+            respuesta.set_message("Error al obtener detalle de la solicitud.")
+            respuesta.set_errors({'error': [str(e)]})
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return respuesta.to_dict()
+
+
+class StudentDocumentsView(APIView):
+    """
+    GET /api/v1.0.0/student/documents/
+
+    Retorna los requerimientos documentales asignados por Secretaría,
+    el historial de documentos cargados y el catálogo de tipos de documento.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        respuesta = RespuestaApi()
+        est = _obtener_estudiante_actual(request, respuesta)
+        if est is None:
+            return respuesta.to_dict()
+
+        try:
+            from app.student_ports import obtener_documentos_y_requerimientos_estudiante
+            data = obtener_documentos_y_requerimientos_estudiante(est['persona_id'])
+            respuesta.set_success(True)
+            respuesta.set_message("Documentos y requerimientos recuperados exitosamente.")
+            respuesta.set_data(data)
+            respuesta.set_status(status.HTTP_200_OK)
+        except Exception as e:
+            respuesta.set_success(False)
+            respuesta.set_message("Error al consultar documentos del estudiante.")
+            respuesta.set_errors({'error': [str(e)]})
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return respuesta.to_dict()
+
+
+class StudentDocumentUploadView(APIView):
+    """
+    POST /api/v1.0.0/student/documents/upload/
+
+    Permite al estudiante cargar un archivo para atender un requerimiento de Secretaría.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        respuesta = RespuestaApi()
+        est = _obtener_estudiante_actual(request, respuesta)
+        if est is None:
+            return respuesta.to_dict()
+
+        from app.serializers import DocumentoEstudianteSubirSerializer
+        serializer = DocumentoEstudianteSubirSerializer(data=request.data)
+        if not serializer.is_valid():
+            respuesta.set_success(False)
+            respuesta.set_message("Datos de carga de documento inválidos.")
+            respuesta.set_errors(serializer.errors)
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+            return respuesta.to_dict()
+
+        archivo = request.FILES.get('archivo') or request.FILES.get('file') or request.FILES.get('documento')
+        if not archivo:
+            respuesta.set_success(False)
+            respuesta.set_message("Debes adjuntar el archivo del documento (PDF o imagen).")
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+            return respuesta.to_dict()
+
+        tipo_id = serializer.validated_data['tipo_id']
+        observacion = serializer.validated_data.get('observacion', '')
+
+        try:
+            from app.student_ports import subir_documento_estudiante
+            nuevo_doc = subir_documento_estudiante(
+                est['persona_id'],
+                request.user.id,
+                tipo_id,
+                archivo,
+                observacion=observacion
+            )
+            respuesta.set_success(True)
+            respuesta.set_message("Documento subido exitosamente. Secretaría revisará tu entrega.")
+            respuesta.set_data(nuevo_doc)
+            respuesta.set_status(status.HTTP_201_CREATED)
+        except LookupError as e:
+            respuesta.set_success(False)
+            respuesta.set_message(str(e))
+            respuesta.set_status(status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            respuesta.set_success(False)
+            respuesta.set_message("Error al subir el documento institucional.")
+            respuesta.set_errors({'error': [str(e)]})
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return respuesta.to_dict()
+

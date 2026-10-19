@@ -13,7 +13,7 @@ Consultas directas a PostgreSQL respetando el esquema real:
   - ctr_materia -> ctr_asignaturamallacurricular -> ctr_asignatura (nombre, color)
   - ctr_clase (materia_id, dia, inicio, fin, aula_id)
 """
-from django.db import connection
+from django.db import connection, transaction
 
 
 def _query_one(sql, params=()):
@@ -461,7 +461,7 @@ def registrar_justificacion_asistencia(persona_id, periodo_id, materia_asignada_
 
     matricula_id = m_row['matricula_id']
 
-    from django.db import connection
+    from django.db import connection, transaction
     with connection.cursor() as cur:
         cur.execute("""
             INSERT INTO ctr_justificacionasistencia (
@@ -591,10 +591,10 @@ def obtener_horario_estudiante(persona_id, periodo_id):
         LEFT JOIN ctr_profesor prof ON prof.id = cl.profesor_id
         LEFT JOIN ctr_persona prof_p ON prof_p.id = prof.persona_id
         LEFT JOIN ctr_turno t ON t.id = cl.turno_id
-        WHERE e.persona_id = %s AND per.id = %s
+        WHERE e.persona_id = %s AND (per.id = %s OR pl.id = %s)
         ORDER BY cl.dia ASC, t.comienza ASC
     """
-    rows = _query_all(sql, [persona_id, periodo_id])
+    rows = _query_all(sql, [persona_id, periodo_id, periodo_id])
 
     # En BD ctr_clase.dia va de 0 a 4 (0=LUNES, 1=MARTES, 2=MIERCOLES, 3=JUEVES, 4=VIERNES)
     # Estandarizamos indice 1: LUNES ... 5: VIERNES
@@ -1543,9 +1543,58 @@ def enviar_push_a_usuario(usuario_id, titulo, cuerpo, datos=None):
 def obtener_contactos_chat(persona_id, periodo_id=None):
     """
     Retorna los contactos autorizados para mensajería:
-    - Docentes de las asignaturas que cursa el estudiante.
-    - Compañeros de aula (mismo nivel, paralelo y periodo).
+    - Si es docente: estudiantes que cursan sus materias y colegas docentes.
+    - Si es estudiante: docentes de sus asignaturas y compañeros de aula.
     """
+    prof_row = _query_one("SELECT id FROM ctr_profesor WHERE persona_id = %s AND status = TRUE LIMIT 1", [persona_id])
+    if prof_row:
+        sql_alumnos = """
+            SELECT DISTINCT
+                est_p.id as persona_id,
+                TRIM(COALESCE(est_p.nombres, '') || ' ' || COALESCE(est_p.apellido_1, '') || ' ' || COALESCE(est_p.apellido_2, '')) as nombre_completo,
+                COALESCE(est_p.correo, '') as correo,
+                COALESCE(est_p.foto, '') as foto,
+                STRING_AGG(DISTINCT asig.nombre, ', ') as info,
+                'companero' as tipo
+            FROM ctr_profesor prof
+            JOIN ctr_profesormateria pm ON pm.profesor_id = prof.id AND pm.status = TRUE
+            JOIN ctr_materia mat ON mat.id = pm.materia_id
+            JOIN ctr_asignaturamallacurricular amc ON amc.id = mat.asignaturamalla_id
+            JOIN ctr_asignatura asig ON asig.id = amc.asignatura_id
+            JOIN ctr_materiaasignada ma ON ma.materia_id = mat.id AND ma.status = TRUE
+            JOIN ctr_nivelmatriculdo nm ON nm.id = ma.nivelmatriculado_id AND nm.status = TRUE
+            JOIN ctr_matricula m ON m.id = nm.matricula_id AND m.status = TRUE
+            JOIN ctr_estudiante e ON e.id = m.estudiante_id AND e.status = TRUE
+            JOIN ctr_persona est_p ON est_p.id = e.persona_id
+            WHERE prof.persona_id = %s
+            GROUP BY est_p.id, est_p.nombres, est_p.apellido_1, est_p.apellido_2, est_p.correo, est_p.foto
+            ORDER BY nombre_completo ASC
+        """
+        alumnos = _query_all(sql_alumnos, [persona_id])
+
+        sql_colegas = """
+            SELECT DISTINCT
+                p.id as persona_id,
+                TRIM(COALESCE(p.nombres, '') || ' ' || COALESCE(p.apellido_1, '') || ' ' || COALESCE(p.apellido_2, '')) as nombre_completo,
+                COALESCE(p.correo, '') as correo,
+                COALESCE(p.foto, '') as foto,
+                'Docente' as info,
+                'docente' as tipo
+            FROM ctr_profesor pr
+            JOIN ctr_persona p ON p.id = pr.persona_id AND p.status = TRUE
+            WHERE pr.persona_id != %s AND pr.status = TRUE
+            ORDER BY nombre_completo ASC
+        """
+        colegas = _query_all(sql_colegas, [persona_id])
+
+        todos = colegas + alumnos
+        return {
+            'total': len(todos),
+            'docentes': colegas,
+            'companeros': alumnos,
+            'contacts': todos
+        }
+
     # 1. Docentes
     sql_docentes = """
         SELECT 
@@ -1836,59 +1885,65 @@ def enviar_mensaje_chat(persona_id, usuario_id, conversacion_id, contenido, tipo
     if not contenido and not adjuntos:
         raise ValueError("El mensaje no puede estar vacío.")
 
-    with connection.cursor() as cursor:
-        cursor.execute("""
-            INSERT INTO chat_message (conversation_id, sender_id, type, content, created_at, updated_at, is_deleted)
-            VALUES (%s, %s, %s, %s, NOW(), NOW(), FALSE)
-            RETURNING id, created_at
-        """, [conversacion_id, persona_id, tipo or 'text', (contenido or '').strip()])
-        row = cursor.fetchone()
-        msg_id, created_at = row[0], row[1]
+    with transaction.atomic():
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO chat_message (conversation_id, sender_id, type, content, created_at, updated_at, is_deleted)
+                VALUES (%s, %s, %s, %s, NOW(), NOW(), FALSE)
+                RETURNING id, created_at
+            """, [conversacion_id, persona_id, tipo or 'text', (contenido or '').strip()])
+            row = cursor.fetchone()
+            msg_id, created_at = row[0], row[1]
 
-        # Guardar adjuntos si los hay
-        adj_resultado = []
-        if adjuntos and isinstance(adjuntos, list):
-            import json
-            for adj in adjuntos:
-                meta = adj.get('metadata') if isinstance(adj.get('metadata'), dict) else {}
-                cursor.execute("""
-                    INSERT INTO chat_message_attachment (message_id, file, original_filename, mime_type, size_bytes, metadata, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, NOW())
-                    RETURNING id
-                """, [
-                    msg_id,
-                    adj.get('url', ''),
-                    adj.get('name', 'adjunto'),
-                    adj.get('mime_type', 'application/octet-stream'),
-                    adj.get('size', 0),
-                    json.dumps(meta)
-                ])
-                adj_id = cursor.fetchone()[0]
-                adj_resultado.append({
-                    'id': adj_id,
-                    'url': adj.get('url', ''),
-                    'name': adj.get('name', ''),
-                    'mime_type': adj.get('mime_type', 'application/octet-stream'),
-                    'size': adj.get('size', 0),
-                })
+            # Guardar adjuntos si los hay
+            adj_resultado = []
+            if adjuntos and isinstance(adjuntos, list):
+                import json
+                for adj in adjuntos:
+                    meta = adj.get('metadata') if isinstance(adj.get('metadata'), dict) else {}
+                    url_val = (adj.get('url') or '')[:500]
+                    name_val = (adj.get('name') or 'adjunto')[:500]
+                    mime_val = (adj.get('mime_type') or 'application/octet-stream')[:127]
+                    size_val = adj.get('size', 0) or 0
+                    cursor.execute("""
+                        INSERT INTO chat_message_attachment (message_id, file, original_filename, mime_type, size_bytes, metadata, created_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                        RETURNING id
+                    """, [
+                        msg_id,
+                        url_val,
+                        name_val,
+                        mime_val,
+                        size_val,
+                        json.dumps(meta)
+                    ])
+                    adj_id = cursor.fetchone()[0]
+                    adj_resultado.append({
+                        'id': adj_id,
+                        'url': url_val,
+                        'name': name_val,
+                        'mime_type': mime_val,
+                        'size': size_val,
+                    })
 
-        # Actualizar conversación
-        vista_previa = (contenido or 'Archivo adjunto')[:90]
-        cursor.execute("""
-            UPDATE chat_conversation
-            SET last_message_at = NOW(),
-                last_message_preview = %s,
-                last_message_sender_id = %s,
-                updated_at = NOW()
-            WHERE id = %s
-        """, [vista_previa, persona_id, conversacion_id])
+            # Actualizar conversación
+            nombre_adj = adjuntos[0].get('name') if (adjuntos and isinstance(adjuntos, list) and len(adjuntos) > 0 and adjuntos[0].get('name')) else 'Archivo adjunto'
+            vista_previa = (contenido or nombre_adj)[:90]
+            cursor.execute("""
+                UPDATE chat_conversation
+                SET last_message_at = NOW(),
+                    last_message_preview = %s,
+                    last_message_sender_id = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+            """, [vista_previa, persona_id, conversacion_id])
 
-        # Actualizar último leído para el remitente
-        cursor.execute("""
-            UPDATE chat_conversation_participant
-            SET last_read_at = NOW(), last_read_message_id = %s
-            WHERE conversation_id = %s AND persona_id = %s
-        """, [msg_id, conversacion_id, persona_id])
+            # Actualizar último leído para el remitente
+            cursor.execute("""
+                UPDATE chat_conversation_participant
+                SET last_read_at = NOW(), last_read_message_id = %s
+                WHERE conversation_id = %s AND persona_id = %s
+            """, [msg_id, conversacion_id, persona_id])
 
     # Enviar push notification al destinatario
     try:
@@ -3206,3 +3261,531 @@ def obtener_calendario_completo(persona_id, periodo_id, vista='agenda', fecha_re
         'total': len(items),
         'pending_count': pending_count,
     }
+
+
+# ==============================================================================
+# TAREA 16: BALCÓN DE SERVICIOS Y TRÁMITES ESTUDIANTILES
+# Tablas: ctr_solicitudservicio, ctr_solicitudservicioadjunto,
+#         ctr_requerimientodocumento, ctr_documentoestudiante, ctr_tipodocumentoestudiante
+# ==============================================================================
+
+def obtener_catalogo_servicios_estudiante(persona_id):
+    """
+    Retorna el catálogo de certificados institucionales, trámites administrativos
+    y materias activas matriculadas por el estudiante para la selección en nueva solicitud.
+    """
+    certificados = [
+        {
+            'subtipo': 'NO_ADEUDAR',
+            'nombre': 'Certificado de No Adeudar',
+            'descripcion': 'Acredita que te encuentras al día en tus obligaciones económicas y pensiones institucionales.',
+            'icono': 'shield-checkmark-outline',
+            'requiere_materia': False,
+            'requiere_fechas': False,
+            'requiere_adjunto': False,
+        },
+        {
+            'subtipo': 'CERTIFICADO_ACADEMICO',
+            'nombre': 'Certificado Académico (Notas)',
+            'descripcion': 'Certificado con el promedio y calificaciones de las asignaturas cursadas en el periodo.',
+            'icono': 'school-outline',
+            'requiere_materia': False,
+            'requiere_fechas': False,
+            'requiere_adjunto': False,
+        },
+        {
+            'subtipo': 'MATRICULA',
+            'nombre': 'Certificado de Matrícula',
+            'descripcion': 'Constancia oficial de matrícula ordinaria en el curso y paralelo asignado.',
+            'icono': 'document-text-outline',
+            'requiere_materia': False,
+            'requiere_fechas': False,
+            'requiere_adjunto': False,
+        },
+        {
+            'subtipo': 'CONDUCTA',
+            'nombre': 'Certificado de Conducta / Comportamiento',
+            'descripcion': 'Certificado disciplinario emitido por Inspección General.',
+            'icono': 'ribbon-outline',
+            'requiere_materia': False,
+            'requiere_fechas': False,
+            'requiere_adjunto': False,
+        },
+        {
+            'subtipo': 'ESTUDIO',
+            'nombre': 'Certificado de Asistencia y Estudio',
+            'descripcion': 'Constancia para trámites laborales de padres, visa o seguro médico.',
+            'icono': 'business-outline',
+            'requiere_materia': False,
+            'requiere_fechas': False,
+            'requiere_adjunto': False,
+        },
+    ]
+
+    tramites = [
+        {
+            'tipo': 'JUSTIFICACION_FALTA',
+            'nombre': 'Justificación de Inasistencia / Faltas',
+            'descripcion': 'Solicita justificar ausencias por enfermedad, calamidad doméstica o citas médicas oficiales.',
+            'icono': 'calendar-outline',
+            'requiere_materia': False,
+            'requiere_fechas': True,
+            'requiere_adjunto': True,
+        },
+        {
+            'tipo': 'EVALUACION_ATRASADA',
+            'nombre': 'Evaluación / Examen Atrasado',
+            'descripcion': 'Solicita autorización de Secretaría y Docencia para rendir un examen o evaluación fuera de fecha.',
+            'icono': 'create-outline',
+            'requiere_materia': True,
+            'requiere_fechas': True,
+            'requiere_adjunto': True,
+        },
+        {
+            'tipo': 'OTRO_TRAMITE',
+            'nombre': 'Solicitud General a Secretaría',
+            'descripcion': 'Cualquier otro trámite administrativo, rectificación o consulta formal.',
+            'icono': 'mail-outline',
+            'requiere_materia': False,
+            'requiere_fechas': False,
+            'requiere_adjunto': False,
+        },
+    ]
+
+    sql_materias = """
+        SELECT mat.id as materia_id, ma.id as materia_asignada_id,
+               COALESCE(asig.nombre, 'Sin nombre') as nombre,
+               TRIM(COALESCE(prof_p.nombres, '') || ' ' || COALESCE(prof_p.apellido_1, '')) as docente_nombre
+        FROM ctr_materiaasignada ma
+        JOIN ctr_nivelmatriculdo nm ON nm.id = ma.nivelmatriculado_id AND nm.status = TRUE
+        JOIN ctr_matricula m ON m.id = nm.matricula_id AND m.status = TRUE
+        JOIN ctr_estudiante e ON e.id = m.estudiante_id AND e.status = TRUE
+        JOIN ctr_materia mat ON mat.id = ma.materia_id
+        JOIN ctr_asignaturamallacurricular amc ON amc.id = mat.asignaturamalla_id
+        JOIN ctr_asignatura asig ON asig.id = amc.asignatura_id
+        LEFT JOIN ctr_profesormateria pm ON pm.materia_id = mat.id AND pm.status = TRUE
+        LEFT JOIN ctr_profesor prof ON prof.id = pm.profesor_id
+        LEFT JOIN ctr_persona prof_p ON prof_p.id = prof.persona_id
+        WHERE e.persona_id = %s AND ma.status = TRUE
+        ORDER BY asig.nombre;
+    """
+    materias = _query_all(sql_materias, [persona_id])
+
+    return {
+        'certificados': certificados,
+        'tramites': tramites,
+        'materias': materias,
+    }
+
+
+def obtener_solicitudes_servicio_estudiante(persona_id, estado=None, tipo=None):
+    """
+    Lista las solicitudes realizadas por el estudiante en ctr_solicitudservicio,
+    con sus indicadores KPI consolidados.
+    """
+    from django.conf import settings
+
+    sql_est = "SELECT id FROM ctr_estudiante WHERE persona_id = %s AND status = TRUE LIMIT 1"
+    est = _query_one(sql_est, [persona_id])
+    if not est:
+        return {'solicitudes': [], 'kpi': {'total': 0, 'pendientes': 0, 'en_tramite': 0, 'aprobadas': 0, 'rechazadas': 0}}
+
+    estudiante_id = est['id']
+    params = [estudiante_id]
+    where_extra = ""
+    if estado:
+        where_extra += " AND s.estado = %s"
+        params.append(estado)
+    if tipo:
+        where_extra += " AND s.tipo = %s"
+        params.append(tipo)
+
+    sql = f"""
+        SELECT s.id, s.codigo, s.codigo_verificacion, s.tipo, s.subtipo_certificado,
+               s.estado, s.nivel_texto, s.paralelo_texto, s.periodo_texto, s.ciudad,
+               s.motivo, s.motivo_detalle, s.falta_desde, s.falta_hasta,
+               s.fecha_evaluacion, s.modalidad_evaluacion, s.materia_id,
+               COALESCE(asig.nombre, '') as materia_nombre,
+               s.documento_solicitud, s.certificado_final, s.fecha_emision_certificado,
+               s.observacion_rechazo, s.fecha_atencion, s.fecha_creacion,
+               (SELECT COUNT(*) FROM ctr_solicitudservicioadjunto adj WHERE adj.solicitud_id = s.id AND adj.status = TRUE) as total_adjuntos
+        FROM ctr_solicitudservicio s
+        LEFT JOIN ctr_materia mat ON mat.id = s.materia_id
+        LEFT JOIN ctr_asignaturamallacurricular amc ON amc.id = mat.asignaturamalla_id
+        LEFT JOIN ctr_asignatura asig ON asig.id = amc.asignatura_id
+        WHERE s.estudiante_id = %s AND s.status = TRUE {where_extra}
+        ORDER BY s.fecha_creacion DESC;
+    """
+    solicitudes = _query_all(sql, params)
+
+    TIPO_TITULOS = {
+        'CERTIFICADO': 'Certificado',
+        'JUSTIFICACION_FALTA': 'Justificación de Inasistencia',
+        'EVALUACION_ATRASADA': 'Evaluación Atrasada',
+        'OTRO_TRAMITE': 'Trámite General',
+    }
+    SUBTIPO_TITULOS = {
+        'NO_ADEUDAR': 'No Adeudar',
+        'CERTIFICADO_ACADEMICO': 'Académico (Notas)',
+        'MATRICULA': 'Matrícula',
+        'CONDUCTA': 'Conducta',
+        'ESTUDIO': 'Asistencia y Estudio',
+    }
+
+    for item in solicitudes:
+        item['tipo_display'] = TIPO_TITULOS.get(item['tipo'], item['tipo'])
+        item['subtipo_display'] = SUBTIPO_TITULOS.get(item['subtipo_certificado'], item['subtipo_certificado'])
+        cert_final = item.get('certificado_final')
+        if cert_final:
+            item['certificado_url'] = f"{settings.MEDIA_URL}{cert_final}".replace('//', '/')
+            item['tiene_certificado'] = True
+        else:
+            item['certificado_url'] = None
+            item['tiene_certificado'] = False
+
+    sql_kpi = """
+        SELECT estado, COUNT(*) as cnt
+        FROM ctr_solicitudservicio
+        WHERE estudiante_id = %s AND status = TRUE
+        GROUP BY estado;
+    """
+    kpi_rows = _query_all(sql_kpi, [estudiante_id])
+    kpi_map = {r['estado']: r['cnt'] for r in kpi_rows}
+    kpi = {
+        'total': sum(kpi_map.values()),
+        'pendientes': kpi_map.get('PENDIENTE', 0) + kpi_map.get('EN_TRAMITE', 0),
+        'aprobadas': kpi_map.get('APROBADA', 0) + kpi_map.get('ATENDIDA', 0) + kpi_map.get('FINALIZADA', 0),
+        'rechazadas': kpi_map.get('RECHAZADA', 0),
+    }
+
+    return {
+        'solicitudes': solicitudes,
+        'kpi': kpi,
+    }
+
+
+def obtener_detalle_solicitud_servicio(persona_id, solicitud_id):
+    """
+    Retorna el detalle completo de una solicitud, incluyendo adjuntos y datos de resolución.
+    """
+    from django.conf import settings
+
+    sql_est = "SELECT id FROM ctr_estudiante WHERE persona_id = %s AND status = TRUE LIMIT 1"
+    est = _query_one(sql_est, [persona_id])
+    if not est:
+        raise LookupError("Estudiante no encontrado.")
+
+    sql = """
+        SELECT s.id, s.codigo, s.codigo_verificacion, s.tipo, s.subtipo_certificado,
+               s.estado, s.nivel_texto, s.paralelo_texto, s.periodo_texto, s.ciudad,
+               s.motivo, s.motivo_detalle, s.falta_desde, s.falta_hasta,
+               s.fecha_evaluacion, s.modalidad_evaluacion, s.materia_id,
+               COALESCE(asig.nombre, '') as materia_nombre,
+               s.documento_solicitud, s.certificado_final, s.fecha_emision_certificado,
+               s.observacion_rechazo, s.fecha_atencion, s.fecha_creacion, s.atendida_por_id,
+               TRIM(COALESCE(p_at.nombres, '') || ' ' || COALESCE(p_at.apellido_1, '')) as atendida_por_nombre
+        FROM ctr_solicitudservicio s
+        LEFT JOIN ctr_materia mat ON mat.id = s.materia_id
+        LEFT JOIN ctr_asignaturamallacurricular amc ON amc.id = mat.asignaturamalla_id
+        LEFT JOIN ctr_asignatura asig ON asig.id = amc.asignatura_id
+        LEFT JOIN ctr_persona p_at ON p_at.id = s.atendida_por_id
+        WHERE s.id = %s AND s.estudiante_id = %s AND s.status = TRUE
+        LIMIT 1;
+    """
+    sol = _query_one(sql, [solicitud_id, est['id']])
+    if not sol:
+        raise LookupError("La solicitud no existe o no pertenece a tu cuenta.")
+
+    TIPO_TITULOS = {
+        'CERTIFICADO': 'Certificado',
+        'JUSTIFICACION_FALTA': 'Justificación de Inasistencia',
+        'EVALUACION_ATRASADA': 'Evaluación Atrasada',
+        'OTRO_TRAMITE': 'Trámite General',
+    }
+    SUBTIPO_TITULOS = {
+        'NO_ADEUDAR': 'No Adeudar',
+        'CERTIFICADO_ACADEMICO': 'Académico (Notas)',
+        'MATRICULA': 'Matrícula',
+        'CONDUCTA': 'Conducta',
+        'ESTUDIO': 'Asistencia y Estudio',
+    }
+
+    sol['tipo_display'] = TIPO_TITULOS.get(sol['tipo'], sol['tipo'])
+    sol['subtipo_display'] = SUBTIPO_TITULOS.get(sol['subtipo_certificado'], sol['subtipo_certificado'])
+    cert_final = sol.get('certificado_final')
+    if cert_final:
+        sol['certificado_url'] = f"{settings.MEDIA_URL}{cert_final}".replace('//', '/')
+        sol['tiene_certificado'] = True
+    else:
+        sol['certificado_url'] = None
+        sol['tiene_certificado'] = False
+
+    sql_adj = """
+        SELECT id, archivo, nombre_original, tamano, fecha_creacion
+        FROM ctr_solicitudservicioadjunto
+        WHERE solicitud_id = %s AND status = TRUE
+        ORDER BY fecha_creacion ASC;
+    """
+    adjuntos = _query_all(sql_adj, [solicitud_id])
+    for adj in adjuntos:
+        adj['archivo_url'] = f"{settings.MEDIA_URL}{adj['archivo']}".replace('//', '/')
+    sol['adjuntos'] = adjuntos
+
+    return sol
+
+
+def crear_solicitud_servicio_estudiante(persona_id, usuario_id, datos, archivos_adjuntos=None):
+    """
+    Crea una nueva solicitud en ctr_solicitudservicio y almacena sus adjuntos en ctr_solicitudservicioadjunto.
+    """
+    import os, uuid
+    from datetime import datetime
+    from django.utils import timezone
+    from django.core.files.storage import default_storage
+    from django.utils.text import get_valid_filename
+
+    sql_est = """
+        SELECT e.id as estudiante_id, p.id as persona_id,
+               m.id as matricula_id, COALESCE(n.nombre, 'Sin nivel') as nivel,
+               COALESCE(par.nombre, 'A') as paralelo,
+               COALESCE(per.nombre, 'Periodo Lectivo') as periodo_nombre
+        FROM ctr_estudiante e
+        JOIN ctr_persona p ON p.id = e.persona_id
+        LEFT JOIN ctr_matricula m ON m.estudiante_id = e.id AND m.status = TRUE
+        LEFT JOIN ctr_nivel n ON n.id = m.nivel_id
+        LEFT JOIN ctr_paralelo par ON par.id = m.paralelo_id
+        LEFT JOIN ctr_periodolectivo pl ON pl.id = m.periodolectivo_id
+        LEFT JOIN ctr_periodo per ON per.id = pl.periodo_id
+        WHERE p.id = %s AND e.status = TRUE
+        LIMIT 1;
+    """
+    est = _query_one(sql_est, [persona_id])
+    if not est:
+        raise LookupError("Estudiante no encontrado.")
+
+    estudiante_id = est['estudiante_id']
+    matricula_id = est['matricula_id']
+    nivel_texto = est['nivel']
+    paralelo_texto = est['paralelo']
+    periodo_texto = est['periodo_nombre']
+    regimen_texto = 'ORDINARIO'
+    ciudad = 'Guayaquil'
+
+    anho = timezone.now().year
+    with connection.cursor() as c:
+        c.execute("SELECT COUNT(*) FROM ctr_solicitudservicio WHERE codigo LIKE %s;", [f"SOL-{anho}-%"])
+        total_anho = c.fetchone()[0]
+    codigo = f"SOL-{anho}-{total_anho + 1:05d}"
+    codigo_verif = str(uuid.uuid4())
+    now = timezone.now()
+
+    tipo = (datos.get('tipo', 'CERTIFICADO') or 'CERTIFICADO')[:30]
+    subtipo = (datos.get('subtipo_certificado', '') or '')[:40]
+    materia_id = datos.get('materia_id')
+    motivo_raw = (datos.get('motivo', '') or '').strip()
+    motivo_detalle = (datos.get('motivo_detalle', '') or motivo_raw).strip()
+    motivo = (motivo_raw[:30] if motivo_raw else (motivo_detalle[:30] if motivo_detalle else 'SOLICITUD')).strip()
+    falta_desde = datos.get('falta_desde') or None
+    falta_hasta = datos.get('falta_hasta') or None
+    fecha_evaluacion = datos.get('fecha_evaluacion') or None
+    modalidad_evaluacion = datos.get('modalidad_evaluacion', '')
+
+    sql_insert = """
+        INSERT INTO ctr_solicitudservicio (
+            fecha_creacion, fecha_modificacion, status, codigo, codigo_verificacion,
+            tipo, subtipo_certificado, estado, nivel_texto, paralelo_texto,
+            regimen_texto, periodo_texto, ciudad, modalidad_evaluacion,
+            fecha_evaluacion, motivo, motivo_detalle, falta_desde, falta_hasta,
+            observacion_rechazo, estudiante_id, materia_id, matricula_id,
+            usuario_creacion_id
+        ) VALUES (
+            %s, %s, TRUE, %s, %s,
+            %s, %s, 'PENDIENTE', %s, %s,
+            %s, %s, %s, %s,
+            %s, %s, %s, %s, %s,
+            '', %s, %s, %s,
+            %s
+        ) RETURNING id;
+    """
+    params_insert = [
+        now, now, codigo, codigo_verif,
+        tipo, subtipo, nivel_texto, paralelo_texto,
+        regimen_texto, periodo_texto, ciudad, modalidad_evaluacion,
+        fecha_evaluacion, motivo, motivo_detalle, falta_desde, falta_hasta,
+        estudiante_id, materia_id, matricula_id,
+        usuario_id
+    ]
+
+    with connection.cursor() as c:
+        c.execute(sql_insert, params_insert)
+        solicitud_id = c.fetchone()[0]
+
+    if archivos_adjuntos:
+        for f in archivos_adjuntos:
+            nombre_limpio = get_valid_filename(f.name)
+            timestamp = int(datetime.now().timestamp())
+            subruta = os.path.join('balcon', 'adjuntos', f"{persona_id}_{timestamp}_{nombre_limpio}").replace('\\', '/')
+            ruta_guardada = default_storage.save(subruta, f)
+            tamano = f.size if hasattr(f, 'size') else 0
+
+            sql_adj = """
+                INSERT INTO ctr_solicitudservicioadjunto (
+                    fecha_creacion, fecha_modificacion, status, archivo, nombre_original,
+                    tamano, solicitud_id, subido_por_id, usuario_creacion_id
+                ) VALUES (
+                    %s, %s, TRUE, %s, %s,
+                    %s, %s, %s, %s
+                );
+            """
+            with connection.cursor() as c:
+                c.execute(sql_adj, [now, now, ruta_guardada, f.name, tamano, solicitud_id, persona_id, usuario_id])
+
+    return obtener_detalle_solicitud_servicio(persona_id, solicitud_id)
+
+
+def obtener_documentos_y_requerimientos_estudiante(persona_id):
+    """
+    Consulta los requerimientos documentales asignados al estudiante (ctr_requerimientodocumento),
+    el estado de entrega contra ctr_documentoestudiante y el catálogo completo de tipos.
+    """
+    from django.conf import settings
+
+    sql_est = "SELECT id FROM ctr_estudiante WHERE persona_id = %s AND status = TRUE LIMIT 1"
+    est = _query_one(sql_est, [persona_id])
+    if not est:
+        return {'requerimientos': [], 'documentos_subidos': [], 'tipos_documentos': [], 'resumen': {}}
+
+    estudiante_id = est['id']
+
+    sql_req = """
+        SELECT r.id as requerimiento_id, r.alcance, r.fecha_limite, r.observacion as observacion_requerimiento,
+               r.tipo_id, t.nombre as tipo_nombre, t.descripcion as tipo_descripcion, t.orden,
+               doc.id as documento_id, doc.archivo, doc.nombre_original, doc.estado,
+               doc.fecha_carga, doc.observacion as observacion_documento
+        FROM ctr_requerimientodocumento r
+        JOIN ctr_tipodocumentoestudiante t ON t.id = r.tipo_id AND t.status = TRUE
+        LEFT JOIN LATERAL (
+            SELECT id, archivo, nombre_original, estado, fecha_carga, observacion
+            FROM ctr_documentoestudiante d
+            WHERE d.tipo_id = r.tipo_id AND d.estudiante_id = %s AND d.status = TRUE
+            ORDER BY d.fecha_carga DESC LIMIT 1
+        ) doc ON TRUE
+        WHERE (r.estudiante_id = %s OR r.alcance = 'TODOS') AND r.activo = TRUE AND r.status = TRUE
+        ORDER BY t.orden, r.fecha_limite;
+    """
+    reqs = _query_all(sql_req, [estudiante_id, estudiante_id])
+    for r in reqs:
+        if r['archivo']:
+            r['archivo_url'] = f"{settings.MEDIA_URL}{r['archivo']}".replace('//', '/')
+        else:
+            r['archivo_url'] = None
+        if not r['documento_id']:
+            r['estado_entrega'] = 'PENDIENTE'
+        else:
+            r['estado_entrega'] = r['estado'] or 'CARGADO'
+
+    sql_docs = """
+        SELECT doc.id, doc.archivo, doc.nombre_original, doc.tamano, doc.estado,
+               doc.cargado_por, doc.fecha_carga, doc.observacion, doc.fecha_revision,
+               t.id as tipo_id, t.nombre as tipo_nombre, t.descripcion as tipo_descripcion
+        FROM ctr_documentoestudiante doc
+        JOIN ctr_tipodocumentoestudiante t ON t.id = doc.tipo_id
+        WHERE doc.estudiante_id = %s AND doc.status = TRUE
+        ORDER BY doc.fecha_carga DESC;
+    """
+    docs = _query_all(sql_docs, [estudiante_id])
+    for d in docs:
+        if d['archivo']:
+            d['archivo_url'] = f"{settings.MEDIA_URL}{d['archivo']}".replace('//', '/')
+        else:
+            d['archivo_url'] = None
+
+    sql_tipos = """
+        SELECT id, nombre, descripcion, orden
+        FROM ctr_tipodocumentoestudiante
+        WHERE status = TRUE AND activo = TRUE
+        ORDER BY orden, nombre;
+    """
+    tipos = _query_all(sql_tipos)
+
+    total_req = len(reqs)
+    entregados = len([r for r in reqs if r['documento_id']])
+    pendientes = total_req - entregados
+    aprobados = len([r for r in reqs if r['estado_entrega'] == 'APROBADO'])
+    rechazados = len([r for r in reqs if r['estado_entrega'] == 'RECHAZADO'])
+
+    return {
+        'requerimientos': reqs,
+        'documentos_subidos': docs,
+        'tipos_documentos': tipos,
+        'resumen': {
+            'total_requeridos': total_req,
+            'entregados': entregados,
+            'pendientes': pendientes,
+            'aprobados': aprobados,
+            'rechazados': rechazados,
+        }
+    }
+
+
+def subir_documento_estudiante(persona_id, usuario_id, tipo_id, archivo_file, observacion=''):
+    """
+    Registra un documento subido por el estudiante en ctr_documentoestudiante
+    para atender requerimientos de Secretaría.
+    """
+    import os
+    from datetime import datetime
+    from django.utils import timezone
+    from django.conf import settings
+    from django.core.files.storage import default_storage
+    from django.utils.text import get_valid_filename
+
+    sql_est = "SELECT id FROM ctr_estudiante WHERE persona_id = %s AND status = TRUE LIMIT 1"
+    est = _query_one(sql_est, [persona_id])
+    if not est:
+        raise LookupError("Estudiante no encontrado.")
+
+    estudiante_id = est['id']
+    tipo = _query_one("SELECT id, nombre FROM ctr_tipodocumentoestudiante WHERE id = %s AND status = TRUE", [tipo_id])
+    if not tipo:
+        raise LookupError("El tipo de documento especificado no existe.")
+
+    nombre_limpio = get_valid_filename(archivo_file.name)
+    timestamp = int(datetime.now().timestamp())
+    subruta = os.path.join('documentos_estudiante', f"est_{estudiante_id}_tipo_{tipo_id}_{timestamp}_{nombre_limpio}").replace('\\', '/')
+    ruta_guardada = default_storage.save(subruta, archivo_file)
+    tamano = archivo_file.size if hasattr(archivo_file, 'size') else 0
+    now = timezone.now()
+
+    sql_ins = """
+        INSERT INTO ctr_documentoestudiante (
+            fecha_creacion, fecha_modificacion, status, archivo, nombre_original,
+            tamano, estado, cargado_por, fecha_carga, observacion,
+            estudiante_id, tipo_id, subido_por_id, usuario_creacion_id
+        ) VALUES (
+            %s, %s, TRUE, %s, %s,
+            %s, 'PENDIENTE', 'ESTUDIANTE', %s, %s,
+            %s, %s, %s, %s
+        ) RETURNING id;
+    """
+    with connection.cursor() as c:
+        c.execute(sql_ins, [
+            now, now, ruta_guardada, archivo_file.name,
+            tamano, now, observacion,
+            estudiante_id, tipo_id, persona_id, usuario_id
+        ])
+        doc_id = c.fetchone()[0]
+
+    return {
+        'id': doc_id,
+        'tipo_id': tipo_id,
+        'tipo_nombre': tipo['nombre'],
+        'nombre_original': archivo_file.name,
+        'tamano': tamano,
+        'estado': 'PENDIENTE',
+        'cargado_por': 'ESTUDIANTE',
+        'fecha_carga': now.isoformat(),
+        'observacion': observacion,
+        'archivo_url': f"{settings.MEDIA_URL}{ruta_guardada}".replace('//', '/'),
+    }
+

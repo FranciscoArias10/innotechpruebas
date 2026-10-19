@@ -57,6 +57,11 @@ from app.student_views import (
     StudentForumPostCreateView,
     StudentForumPostActionView,
     StudentSubjectInquiriesView,
+    StudentServiceTypesView,
+    StudentServiceRequestsView,
+    StudentServiceRequestDetailView,
+    StudentDocumentsView,
+    StudentDocumentUploadView,
 )
 
 urlpatterns = [
@@ -132,6 +137,13 @@ urlpatterns = [
     path('student/finance/rubros/<int:rubro_id>/', StudentRubroDetailView.as_view(), name='movil-student-rubro-detail'),
     path('student/finance/comprobante/', StudentSubirComprobanteView.as_view(), name='movil-student-subir-comprobante'),
     path('student/pensions/', StudentRubrosView.as_view(), name='movil-student-pensions'),
+
+    # Tarea 16: Balcón de servicios y trámites estudiantiles
+    path('student/services/types/', StudentServiceTypesView.as_view(), name='movil-student-service-types'),
+    path('student/services/requests/', StudentServiceRequestsView.as_view(), name='movil-student-service-requests'),
+    path('student/services/requests/<int:solicitud_id>/', StudentServiceRequestDetailView.as_view(), name='movil-student-service-request-detail'),
+    path('student/documents/', StudentDocumentsView.as_view(), name='movil-student-documents'),
+    path('student/documents/upload/', StudentDocumentUploadView.as_view(), name='movil-student-document-upload'),
 
     # Endpoints del representante
     path('representative/students/<int:student_id>/grades/', RepresentativeStudentGradesView.as_view(), name='movil-representative-student-grades'),
