@@ -108,13 +108,14 @@ def generar_horario_html(persona_id, periodo_id, datos_horario):
     sql_est = """
         SELECT 
             p.nombres, p.apellido_1, p.apellido_2,
-            per.nombre as periodo_nombre
+            COALESCE(per.nombre, pl.nombre, 'Periodo Académico') as periodo_nombre
         FROM ctr_persona p
         LEFT JOIN ctr_periodo per ON per.id = %s
+        LEFT JOIN ctr_periodolectivo pl ON (pl.id = %s OR pl.periodo_id = %s)
         WHERE p.id = %s
     """
     with connection.cursor() as cur:
-        cur.execute(sql_est, [periodo_id, persona_id])
+        cur.execute(sql_est, [periodo_id, periodo_id, periodo_id, persona_id])
         row = cur.fetchone()
 
     nombre_est = 'Alumno'
@@ -568,13 +569,14 @@ def generar_horario_pdf_reportlab_fallback(persona_id, periodo_id, datos_horario
     sql_est = """
         SELECT 
             p.nombres, p.apellido_1, p.apellido_2,
-            per.nombre as periodo_nombre
+            COALESCE(per.nombre, pl.nombre, 'Periodo Académico') as periodo_nombre
         FROM ctr_persona p
         LEFT JOIN ctr_periodo per ON per.id = %s
+        LEFT JOIN ctr_periodolectivo pl ON (pl.id = %s OR pl.periodo_id = %s)
         WHERE p.id = %s
     """
     with connection.cursor() as cur:
-        cur.execute(sql_est, [periodo_id, persona_id])
+        cur.execute(sql_est, [periodo_id, periodo_id, periodo_id, persona_id])
         row = cur.fetchone()
     
     nombre_est = 'Alumno'

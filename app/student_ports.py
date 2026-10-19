@@ -591,10 +591,10 @@ def obtener_horario_estudiante(persona_id, periodo_id):
         LEFT JOIN ctr_profesor prof ON prof.id = cl.profesor_id
         LEFT JOIN ctr_persona prof_p ON prof_p.id = prof.persona_id
         LEFT JOIN ctr_turno t ON t.id = cl.turno_id
-        WHERE e.persona_id = %s AND per.id = %s
+        WHERE e.persona_id = %s AND (per.id = %s OR pl.id = %s)
         ORDER BY cl.dia ASC, t.comienza ASC
     """
-    rows = _query_all(sql, [persona_id, periodo_id])
+    rows = _query_all(sql, [persona_id, periodo_id, periodo_id])
 
     # En BD ctr_clase.dia va de 0 a 4 (0=LUNES, 1=MARTES, 2=MIERCOLES, 3=JUEVES, 4=VIERNES)
     # Estandarizamos indice 1: LUNES ... 5: VIERNES
