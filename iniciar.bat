@@ -4,12 +4,15 @@ REM Script de inicio rápido para SIGE-UBE API (Windows 11)
 REM ==============================================================================
 
 echo [1/3] Verificando servicio de PostgreSQL en Windows...
-sc query postgresql-x64-16 | find "RUNNING" >nul 2>&1
+sc query postgresql-x64-18 | find "RUNNING" >nul 2>&1
 if errorlevel 1 (
-    sc query postgresql-x64-15 | find "RUNNING" >nul 2>&1
+    sc query postgresql-x64-16 | find "RUNNING" >nul 2>&1
     if errorlevel 1 (
-        echo Iniciando PostgreSQL...
-        net start postgresql-x64-16 >nul 2>&1 || net start postgresql-x64-15 >nul 2>&1
+        sc query postgresql-x64-15 | find "RUNNING" >nul 2>&1
+        if errorlevel 1 (
+            echo Iniciando PostgreSQL...
+            net start postgresql-x64-18 >nul 2>&1 || net start postgresql-x64-16 >nul 2>&1 || net start postgresql-x64-15 >nul 2>&1
+        )
     )
 )
 
@@ -23,6 +26,6 @@ if exist venv\Scripts\activate.bat (
     exit /b 1
 )
 
-echo [3/3] Iniciando servidor Django en http://127.0.0.1:8000/ ...
-python manage.py runserver
+echo [3/3] Iniciando servidor Django en http://0.0.0.0:8000/ ...
+python manage.py runserver 0.0.0.0:8000
 pause

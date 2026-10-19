@@ -50,6 +50,8 @@ from app.student_views import (
     StudentRubrosView,
     StudentRubroDetailView,
     StudentSubirComprobanteView,
+    StudentProfileView,
+    StudentCarnetView,
 )
 
 urlpatterns = [
@@ -60,6 +62,8 @@ urlpatterns = [
     path('feedback/', FeedbackView.as_view(), name='movil-feedback'),
 
     # Endpoints del estudiante (Fase 1)
+    path('student/profile/', StudentProfileView.as_view(), name='movil-student-profile'),
+    path('student/carnet/', StudentCarnetView.as_view(), name='movil-student-carnet'),
     path('student/home/', StudentHomeView.as_view(), name='movil-student-home'),
     path('student/summary/', StudentSummaryView.as_view(), name='movil-student-summary'),
     path('student/subjects/', StudentSubjectsView.as_view(), name='movil-student-subjects'),

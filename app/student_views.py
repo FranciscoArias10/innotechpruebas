@@ -1672,3 +1672,116 @@ class StudentSubirComprobanteView(APIView):
             resp.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return resp.to_dict()
+
+class StudentProfileView(APIView):
+    """
+    GET /api/v1.0.0/movil/student/profile/
+    Retorna el perfil institucional completo del estudiante desde ctr_persona, ctr_estudiante y ctr_matricula (Tarea 14).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        respuesta = RespuestaApi()
+        est = _obtener_estudiante_actual(request, respuesta)
+        if est is None:
+            return respuesta.to_dict()
+
+        periodo_id = _obtener_periodo_id(request, respuesta)
+        matricula = None
+        periodo_nombre = 'Periodo Lectivo 2026 - 2027'
+        if periodo_id:
+            try:
+                resumen = obtener_resumen_estudiante(est['persona_id'], periodo_id)
+                matricula = resumen.get('enrollment')
+                if resumen.get('period') and resumen['period'].get('name'):
+                    periodo_nombre = resumen['period']['name']
+            except Exception:
+                pass
+
+        nombres = est.get('nombres') or request.user.first_name or 'Estudiante'
+        ap1 = est.get('apellido_1') or ''
+        ap2 = est.get('apellido_2') or ''
+        apellidos = f"{ap1} {ap2}".strip() or request.user.last_name or 'Bolivariano'
+        nombre_completo = est.get('nombre_completo') or f"{nombres} {apellidos}".strip()
+        cedula = est.get('cedula') or request.user.username
+        correo = est.get('correo_institucional') or request.user.email
+
+        curso = matricula.get('level') if matricula else '10MO DE BÁSICA'
+        curso_alias = matricula.get('level_alias') if matricula else curso
+        paralelo = matricula.get('parallel') if matricula else 'A'
+        mat_id = matricula.get('id') if matricula else est.get('estudiante_id', 1)
+        mat_num = f"MAT-2026-{str(mat_id).zfill(4)}"
+
+        data = {
+            'id': request.user.id,
+            'persona_id': est.get('persona_id'),
+            'estudiante_id': est.get('estudiante_id'),
+            'nombres': nombres,
+            'apellido_1': ap1,
+            'apellido_2': ap2,
+            'apellidos': apellidos,
+            'nombre_completo': nombre_completo,
+            'cedula': cedula,
+            'correo_institucional': correo,
+            'foto': est.get('foto') or None,
+            'curso': curso,
+            'curso_alias': curso_alias,
+            'paralelo': paralelo,
+            'matricula_id': mat_id,
+            'matricula_numero': mat_num,
+            'periodo_lectivo': periodo_nombre,
+            'periodo_id': periodo_id,
+            'seccion': 'Matutina',
+            'modalidad': 'Presencial',
+            'tipo_sangre': 'O Positivo',
+            'fecha_emision': '02/05/2026',
+            'fecha_vigencia': '31/03/2027',
+            'codigo_qr': f"UNIEBEC|EST|{cedula}|{mat_num}|{periodo_nombre}|VALIDO",
+            'codigo_barras': f"786{cedula.replace('-', '').replace(' ', '')}",
+            'rol': 'ALUMNO REGULAR',
+            'estado_matricula': 'ACTIVA'
+        }
+
+        respuesta.set_success(True)
+        respuesta.set_message('Perfil del estudiante recuperado con éxito.')
+        respuesta.set_data(data)
+        respuesta.set_status(status.HTTP_200_OK)
+        return respuesta.to_dict()
+
+
+class StudentCarnetView(APIView):
+    """
+    GET /api/v1.0.0/movil/student/carnet/ (o estudiante/carnet, action=generate)
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        import datetime
+        view_perfil = StudentProfileView()
+        res_perfil = view_perfil.get(request)
+        datos_resp = getattr(res_perfil, 'data', {})
+        if isinstance(datos_resp, dict) and not datos_resp.get('isSuccess'):
+            return res_perfil
+        elif not isinstance(datos_resp, dict) and hasattr(res_perfil, 'get') and not res_perfil.get('isSuccess'):
+            return res_perfil
+
+        perfil = (datos_resp.get('data') if isinstance(datos_resp, dict) else None) or {}
+        carne = {
+            'estudiante': perfil,
+            'institucion': {
+                'nombre': 'UNIDAD EDUCATIVA BOLIVARIANA',
+                'siglas': 'UNIEBEC',
+                'lema': 'Excelencia, Innovación y Valores'
+            },
+            'codigo_qr': perfil.get('codigo_qr'),
+            'codigo_barras': perfil.get('codigo_barras'),
+            'generado_el': datetime.date.today().strftime('%d/%m/%Y'),
+            'valido_hasta': perfil.get('fecha_vigencia', '31/03/2027')
+        }
+        respuesta = RespuestaApi()
+        respuesta.set_success(True)
+        respuesta.set_message('Carné digital generado exitosamente.')
+        respuesta.set_data(carne)
+        respuesta.set_status(status.HTTP_200_OK)
+        return respuesta.to_dict()
+

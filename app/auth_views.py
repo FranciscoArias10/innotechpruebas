@@ -47,15 +47,28 @@ def _construir_datos_sesion(user):
     periodos = obtener_periodos_usuario(user)
     active_period_id = obtener_periodo_activo_id(periodos)
     requiere_cambio = password_change_required(user)
+
+    persona = None
+    try:
+        persona = obtener_persona_por_usuario(user)
+    except Exception:
+        pass
+
+    first_name = (persona.get('nombres') if persona else '') or user.first_name or ''
+    last_name = (persona.get('apellidos') if persona else '') or user.last_name or ''
+    cedula = (persona.get('cedula') if persona else None)
+    email = (persona.get('correo_institucional') if persona else '') or user.email
+
     return {
         'access': str(tokens.access_token),
         'refresh': str(tokens),
         'user': {
             'id': user.id,
             'username': user.username,
-            'email': user.email,
-            'first_name': user.first_name,
-            'last_name': user.last_name,
+            'email': email,
+            'first_name': first_name,
+            'last_name': last_name,
+            'cedula': cedula,
             'is_staff': user.is_staff,
             'is_superuser': user.is_superuser,
             'is_active': user.is_active,

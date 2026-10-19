@@ -130,7 +130,7 @@ def obtener_username_por_cedula(cedula):
         row = _query_one(
             """
             SELECT au.username,
-                   TRIM(au.first_name || ' ' || au.last_name) AS full_name
+                   TRIM(cp.nombres || ' ' || cp.apellido_1 || ' ' || COALESCE(cp.apellido_2, '')) AS full_name
             FROM ctr_persona cp
             JOIN auth_user au ON au.id = cp.usuario_id
             WHERE cp.cedula = %s AND cp.status = TRUE
@@ -152,7 +152,15 @@ def obtener_persona_por_usuario(user):
     """
     try:
         row = _query_one(
-            "SELECT cedula, nombres, apellidos FROM ctr_persona WHERE usuario_id = %s AND status = TRUE LIMIT 1",
+            """
+            SELECT cedula, nombres, apellido_1, apellido_2,
+                   TRIM(nombres || ' ' || apellido_1 || ' ' || COALESCE(apellido_2, '')) as nombre_completo,
+                   TRIM(apellido_1 || ' ' || COALESCE(apellido_2, '')) as apellidos,
+                   correo_institucional, foto
+            FROM ctr_persona
+            WHERE usuario_id = %s AND status = TRUE
+            LIMIT 1
+            """,
             [user.id]
         )
         return row
