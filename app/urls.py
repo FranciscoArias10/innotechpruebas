@@ -52,6 +52,11 @@ from app.student_views import (
     StudentSubirComprobanteView,
     StudentProfileView,
     StudentCarnetView,
+    StudentSubjectForumsView,
+    StudentForumDetailView,
+    StudentForumPostCreateView,
+    StudentForumPostActionView,
+    StudentSubjectInquiriesView,
 )
 
 urlpatterns = [
@@ -114,6 +119,13 @@ urlpatterns = [
     path('student/quizzes/attempts/<int:intento_id>/save-answer/', StudentQuizAttemptQuestionsView.as_view(), name='movil-student-quiz-attempt-save-answer'),
     path('student/quizzes/attempts/<int:intento_id>/finish/', StudentQuizAttemptQuestionsView.as_view(), name='movil-student-quiz-attempt-finish'),
     path('student/quizzes/attempts/<int:intento_id>/review/', StudentQuizAttemptReviewView.as_view(), name='movil-student-quiz-attempt-review'),
+
+    # Tarea 12: Foros y consultas al docente
+    path('student/subjects/<int:materia_asignada_id>/forums/', StudentSubjectForumsView.as_view(), name='movil-student-subject-forums'),
+    path('student/forums/<int:foro_id>/', StudentForumDetailView.as_view(), name='movil-student-forum-detail'),
+    path('student/forums/<int:foro_id>/posts/', StudentForumPostCreateView.as_view(), name='movil-student-forum-post-create'),
+    path('student/forums/posts/<int:post_id>/', StudentForumPostActionView.as_view(), name='movil-student-forum-post-action'),
+    path('student/subjects/<int:materia_asignada_id>/inquiries/', StudentSubjectInquiriesView.as_view(), name='movil-student-subject-inquiries'),
 
     # Tarea 15: Pensiones, rubros y comprobantes de pago
     path('student/finance/rubros/', StudentRubrosView.as_view(), name='movil-student-rubros'),

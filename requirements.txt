@@ -14,3 +14,6 @@ schemathesis
 # Driver PostgreSQL
 psycopg2-binary==2.9.13
 
+# CORS
+django-cors-headers==4.9.0
+

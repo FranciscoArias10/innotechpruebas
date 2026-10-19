@@ -69,3 +69,47 @@ class FeedbackMovilSerializer(serializers.ModelSerializer):
     class Meta:
         model = FeedbackMovil
         fields = ('tipo', 'mensaje')
+
+
+class ForoPostMensajeSerializer(serializers.Serializer):
+    """Valida el cuerpo para publicar o editar un aporte en un foro."""
+
+    mensaje = serializers.CharField(
+        max_length=5000,
+        min_length=1,
+        allow_blank=False,
+        trim_whitespace=True,
+        error_messages={
+            'blank': 'El mensaje del aporte no puede estar vacío.',
+            'required': 'El campo mensaje es obligatorio.',
+            'max_length': 'El mensaje no puede exceder los 5000 caracteres.',
+        }
+    )
+
+
+class ConsultaDocenteCrearSerializer(serializers.Serializer):
+    """Valida el cuerpo para enviar una nueva consulta privada al docente."""
+
+    asunto = serializers.CharField(
+        max_length=255,
+        min_length=2,
+        allow_blank=False,
+        trim_whitespace=True,
+        error_messages={
+            'blank': 'El asunto no puede estar vacío.',
+            'required': 'El campo asunto es obligatorio.',
+            'max_length': 'El asunto no puede exceder los 255 caracteres.',
+        }
+    )
+    pregunta = serializers.CharField(
+        max_length=5000,
+        min_length=3,
+        allow_blank=False,
+        trim_whitespace=True,
+        error_messages={
+            'blank': 'El detalle de la pregunta no puede estar vacío.',
+            'required': 'El campo pregunta es obligatorio.',
+            'max_length': 'La pregunta no puede exceder los 5000 caracteres.',
+        }
+    )
+

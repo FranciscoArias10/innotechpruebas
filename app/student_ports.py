@@ -252,6 +252,32 @@ def obtener_detalle_notas_materia(persona_id, periodo_id, materia_asignada_id):
             'grading_books': []
         })
 
+    # Consultar actividades con o sin nota y su retroalimentacion docente
+    sql_actividades = """
+        SELECT a.id, a.nombre as name, a.fechainicio, a.fechafin,
+               ROUND(CAST(COALESCE(a.ponderacion, 10) AS numeric), 2) as max_score,
+               na.id as grade_id, na.nota as grade, na.observacion as feedback, na.fecha as grade_date
+        FROM ctr_actividad a
+        JOIN ctr_planificacionsemanalcontenido psc ON psc.id = a.planificacionsemanal_id AND psc.status = TRUE
+        JOIN ctr_materia mat ON mat.id = psc.materia_id
+        JOIN ctr_materiaasignada ma ON ma.materia_id = mat.id AND ma.id = %s
+        LEFT JOIN ctr_notaactividad na ON na.actividad_id = a.id AND na.materiaasignada_id = ma.id AND na.status = TRUE
+        WHERE a.status = TRUE
+        ORDER BY a.fechafin DESC NULLS LAST, a.id DESC
+    """
+    actividades_rows = _query_all(sql_actividades, [materia_asignada_id])
+    actividades_list = []
+    for a in actividades_rows:
+        actividades_list.append({
+            'id': a['id'],
+            'name': a['name'],
+            'max_score': float(a['max_score'] or 10.0),
+            'grade': float(a['grade']) if a['grade'] is not None else None,
+            'feedback': a['feedback'] or '',
+            'grade_date': str(a['grade_date']) if a['grade_date'] else None,
+            'due_date': str(a['fechafin']) if a['fechafin'] else None,
+        })
+
     return {
         'subject': {
             'id': materia_info['id'],
@@ -268,7 +294,8 @@ def obtener_detalle_notas_materia(persona_id, periodo_id, materia_asignada_id):
             'name': 'Modelo Evaluativo Institucional',
             'is_quantitative': bool(materia_info['is_quantitative']),
             'items': items_list
-        }
+        },
+        'graded_activities': actividades_list
     }
 
 
@@ -1914,7 +1941,6 @@ def marcar_conversacion_leida(persona_id, conversacion_id):
     return True
 
 
-
 # ==============================================================================
 # Tarea 15: Pensiones, rubros y comprobantes de pago
 # ==============================================================================
@@ -2279,4 +2305,904 @@ def registrar_comprobante_pago(persona_id, usuario_id, pago_id, archivo_subido=N
         'estado': 1,
         'estado_texto': 'En revisión (esperando validación de Colecturía)',
         'fecha_creacion': fecha_creacion.isoformat() if fecha_creacion else '',
+    }
+
+
+# =========================================================================
+# TAREA 12: FOROS DE DISCUSIÓN Y CONSULTAS AL DOCENTE
+# =========================================================================
+
+def verificar_matricula_estudiante_materia(persona_id, materia_asignada_id):
+    """
+    Verifica que el estudiante (persona_id) esté matriculado activamente en la materia_asignada_id.
+    Retorna la información básica de la materia asignada o lanza PermissionError / LookupError.
+    """
+    sql = """
+        SELECT ma.id as materia_asignada_id,
+               ma.materia_id,
+               asig.nombre as materia_nombre,
+               e.id as estudiante_id,
+               p_est.id as persona_id,
+               TRIM(COALESCE(p_est.nombres, '') || ' ' || COALESCE(p_est.apellido_1, '') || ' ' || COALESCE(p_est.apellido_2, '')) as estudiante_nombre,
+               TRIM(COALESCE(prof_p.nombres, '') || ' ' || COALESCE(prof_p.apellido_1, '')) as docente_nombre,
+               prof.id as profesor_id
+        FROM ctr_materiaasignada ma
+        JOIN ctr_nivelmatriculdo nm ON nm.id = ma.nivelmatriculado_id AND nm.status = TRUE
+        JOIN ctr_matricula m ON m.id = nm.matricula_id AND m.status = TRUE
+        JOIN ctr_estudiante e ON e.id = m.estudiante_id AND e.status = TRUE
+        JOIN ctr_persona p_est ON p_est.id = e.persona_id
+        JOIN ctr_materia mat ON mat.id = ma.materia_id
+        JOIN ctr_asignaturamallacurricular amc ON amc.id = mat.asignaturamalla_id
+        JOIN ctr_asignatura asig ON asig.id = amc.asignatura_id
+        LEFT JOIN ctr_profesormateria pm ON pm.materia_id = mat.id AND pm.status = TRUE
+        LEFT JOIN ctr_profesor prof ON prof.id = pm.profesor_id
+        LEFT JOIN ctr_persona prof_p ON prof_p.id = prof.persona_id
+        WHERE ma.id = %s AND ma.status = TRUE
+        LIMIT 1
+    """
+    info = _query_one(sql, [materia_asignada_id])
+    if not info:
+        raise LookupError("La materia asignada no existe o no se encuentra activa.")
+    if info['persona_id'] != persona_id:
+        raise PermissionError("No tienes permiso para acceder a esta materia.")
+    return info
+
+
+
+def asegurar_foros_para_materia(materia_id, materia_nombre):
+    """
+    Garantiza que la materia tenga planificacion semanal y foros de discusion activos
+    para que los estudiantes siempre dispongan de espacios de consulta y debate.
+    """
+    with connection.cursor() as cursor:
+        # 1. Asegurar planificacion semanal
+        cursor.execute("""
+            SELECT id FROM ctr_planificacionsemanalcontenido
+            WHERE materia_id = %s AND status = TRUE
+            ORDER BY id ASC LIMIT 1;
+        """, [materia_id])
+        row_psc = cursor.fetchone()
+        if not row_psc:
+            cursor.execute("""
+                INSERT INTO ctr_planificacionsemanalcontenido (
+                    fecha_creacion, fecha_modificacion, status,
+                    destreza, inicio, fin, estado, materia_id
+                ) VALUES (
+                    NOW(), NOW(), TRUE,
+                    'Planificacion Academica y Espacios de Interaccion',
+                    CURRENT_DATE, CURRENT_DATE + INTERVAL '120 days', 1, %s
+                ) RETURNING id;
+            """, [materia_id])
+            psc_id = cursor.fetchone()[0]
+        else:
+            psc_id = row_psc[0]
+
+        # 2. Sincronizar actividades existentes de tipo foro sin registro en ctr_foro
+        cursor.execute("""
+            INSERT INTO ctr_foro (
+                fecha_creacion, fecha_modificacion, status,
+                permite_hilos, moderado, calificable, actividad_id
+            )
+            SELECT 
+                COALESCE(a.fecha_creacion, NOW()), 
+                NOW(), 
+                TRUE, 
+                TRUE, 
+                FALSE, 
+                FALSE, 
+                a.id
+            FROM ctr_actividad a
+            LEFT JOIN ctr_foro f ON f.actividad_id = a.id
+            WHERE a.planificacionsemanal_id = %s
+              AND (a.tiporecurso_id = 3 OR a.nombre ILIKE '%%FORO%%')
+              AND a.status = TRUE
+              AND f.id IS NULL;
+        """, [psc_id])
+
+        # 3. Contar foros activos en la materia
+        cursor.execute("""
+            SELECT count(f.id)
+            FROM ctr_foro f
+            JOIN ctr_actividad a ON a.id = f.actividad_id AND a.status = TRUE
+            JOIN ctr_planificacionsemanalcontenido psc ON psc.id = a.planificacionsemanal_id AND psc.status = TRUE
+            WHERE psc.materia_id = %s AND f.status = TRUE;
+        """, [materia_id])
+        total_foros = cursor.fetchone()[0]
+
+        # 4. Asegurar que existan al menos 2 foros en la materia
+        if total_foros == 0:
+            # Crear Foro General Abierto
+            cursor.execute("""
+                INSERT INTO ctr_actividad (
+                    fecha_creacion, fecha_modificacion, status,
+                    nombre, descripcion, fechainicio, fechafin,
+                    tipocalificacion, tipoentrega, oculto, archivo,
+                    cerrada, librocategoria_id, planificacionsemanal_id,
+                    tiporecurso_id, ponderacion
+                ) VALUES (
+                    NOW(), NOW(), TRUE,
+                    %s, %s, NOW() - INTERVAL '1 day', NOW() + INTERVAL '60 days',
+                    1, 1, FALSE, '',
+                    FALSE, 1, %s,
+                    3, 0
+                ) RETURNING id;
+            """, [
+                f'Foro de Dudas y Debate General - {materia_nombre}',
+                f'Bienvenidos al Foro de Dudas y Debate General de la asignatura {materia_nombre}.\n\nEste espacio está destinado a plantear consultas académicas, debatir sobre los contenidos y compartir aportes constructivos con el docente y compañeros.',
+                psc_id
+            ])
+            act_id_1 = cursor.fetchone()[0]
+            cursor.execute("""
+                INSERT INTO ctr_foro (
+                    fecha_creacion, fecha_modificacion, status,
+                    permite_hilos, moderado, calificable, actividad_id
+                ) VALUES (
+                    NOW(), NOW(), TRUE, TRUE, FALSE, FALSE, %s
+                );
+            """, [act_id_1])
+
+            # Crear Foro Tematico #1
+            cursor.execute("""
+                INSERT INTO ctr_actividad (
+                    fecha_creacion, fecha_modificacion, status,
+                    nombre, descripcion, fechainicio, fechafin,
+                    tipocalificacion, tipoentrega, oculto, archivo,
+                    cerrada, librocategoria_id, planificacionsemanal_id,
+                    tiporecurso_id, ponderacion
+                ) VALUES (
+                    NOW(), NOW(), TRUE,
+                    %s, %s, NOW() - INTERVAL '1 day', NOW() + INTERVAL '30 days',
+                    1, 1, FALSE, '',
+                    FALSE, 1, %s,
+                    3, 10
+                ) RETURNING id;
+            """, [
+                f'FORO #1 - Conceptos Clave de {materia_nombre}',
+                f'Tema: Fundamentos e introducción a {materia_nombre}\nObjetivo: Socializar conceptos principales y conocimientos previos.\nPregunta del foro: ¿Cuáles son las aplicaciones prácticas de esta asignatura en el entorno cotidiano o profesional?',
+                psc_id
+            ])
+            act_id_2 = cursor.fetchone()[0]
+            cursor.execute("""
+                INSERT INTO ctr_foro (
+                    fecha_creacion, fecha_modificacion, status,
+                    permite_hilos, moderado, calificable, actividad_id
+                ) VALUES (
+                    NOW(), NOW(), TRUE, TRUE, FALSE, FALSE, %s
+                );
+            """, [act_id_2])
+
+        elif total_foros == 1:
+            # Si solo tiene 1 foro, agregar el Foro General de Dudas y Aportes
+            cursor.execute("""
+                INSERT INTO ctr_actividad (
+                    fecha_creacion, fecha_modificacion, status,
+                    nombre, descripcion, fechainicio, fechafin,
+                    tipocalificacion, tipoentrega, oculto, archivo,
+                    cerrada, librocategoria_id, planificacionsemanal_id,
+                    tiporecurso_id, ponderacion
+                ) VALUES (
+                    NOW(), NOW(), TRUE,
+                    %s, %s, NOW() - INTERVAL '1 day', NOW() + INTERVAL '60 days',
+                    1, 1, FALSE, '',
+                    FALSE, 1, %s,
+                    3, 0
+                ) RETURNING id;
+            """, [
+                f'Foro de Dudas y Novedades - {materia_nombre}',
+                f'Espacio abierto permanente para consultas sobre la planificación, tareas y fechas de evaluación en {materia_nombre}.',
+                psc_id
+            ])
+            act_id_gen = cursor.fetchone()[0]
+            cursor.execute("""
+                INSERT INTO ctr_foro (
+                    fecha_creacion, fecha_modificacion, status,
+                    permite_hilos, moderado, calificable, actividad_id
+                ) VALUES (
+                    NOW(), NOW(), TRUE, TRUE, FALSE, FALSE, %s
+                );
+            """, [act_id_gen])
+
+def obtener_foros_materia(persona_id, materia_asignada_id):
+    """
+    Retorna la lista de foros de discusion de una materia asignada para el estudiante.
+    Garantiza que la materia cuente con foros de consulta y debate disponibles.
+    """
+    materia_info = verificar_matricula_estudiante_materia(persona_id, materia_asignada_id)
+
+    # Asegurar que existan foros de debate y consulta para esta materia
+    asegurar_foros_para_materia(materia_info['materia_id'], materia_info['materia_nombre'])
+
+    sql = """
+        SELECT f.id,
+               ma.id as materia_asignada_id,
+               asig.nombre as materia_nombre,
+               a.nombre as titulo,
+               COALESCE(a.descripcion, '') as descripcion,
+               COALESCE(a.fechainicio, f.fecha_creacion) as fecha_creacion,
+               a.fechafin as fecha_cierre,
+               CASE 
+                   WHEN a.cerrada = TRUE THEN TRUE
+                   WHEN a.fechafin IS NOT NULL AND a.fechafin < NOW() THEN TRUE
+                   ELSE FALSE
+               END as esta_cerrado,
+               TRIM(COALESCE(prof_p.nombres, '') || ' ' || COALESCE(prof_p.apellido_1, '')) as docente_nombre,
+               COUNT(pf.id) FILTER (WHERE pf.status = TRUE) as total_posts,
+               MAX(pf.fecha) FILTER (WHERE pf.status = TRUE) as ultimo_post_fecha
+        FROM ctr_foro f
+        JOIN ctr_actividad a ON a.id = f.actividad_id AND a.status = TRUE
+        JOIN ctr_planificacionsemanalcontenido psc ON psc.id = a.planificacionsemanal_id AND psc.status = TRUE
+        JOIN ctr_materia mat ON mat.id = psc.materia_id
+        JOIN ctr_materiaasignada ma ON ma.materia_id = mat.id AND ma.id = %s
+        JOIN ctr_asignaturamallacurricular amc ON amc.id = mat.asignaturamalla_id
+        JOIN ctr_asignatura asig ON asig.id = amc.asignatura_id
+        LEFT JOIN ctr_profesormateria pm ON pm.materia_id = mat.id AND pm.status = TRUE
+        LEFT JOIN ctr_profesor prof ON prof.id = pm.profesor_id
+        LEFT JOIN ctr_persona prof_p ON prof_p.id = prof.persona_id
+        LEFT JOIN ctr_postforo pf ON pf.foro_id = f.id
+        WHERE f.status = TRUE
+        GROUP BY f.id, ma.id, asig.nombre, a.nombre, a.descripcion, a.fechainicio, a.fechafin, a.cerrada, f.fecha_creacion, prof_p.nombres, prof_p.apellido_1
+        ORDER BY a.fechainicio DESC NULLS LAST, f.id DESC
+    """
+    rows = _query_all(sql, [materia_asignada_id])
+    forums = []
+    for r in rows:
+        forums.append({
+            'id': r['id'],
+            'materia_asignada_id': r['materia_asignada_id'],
+            'materia_nombre': r['materia_nombre'],
+            'titulo': r['titulo'],
+            'descripcion': r['descripcion'] or '',
+            'fecha_creacion': r['fecha_creacion'].isoformat() if r['fecha_creacion'] else None,
+            'fecha_cierre': r['fecha_cierre'].isoformat() if r['fecha_cierre'] else None,
+            'esta_cerrado': bool(r['esta_cerrado']),
+            'docente_nombre': r['docente_nombre'] or materia_info.get('docente_nombre', 'Docente titular'),
+            'total_posts': int(r['total_posts'] or 0),
+            'ultimo_post_fecha': r['ultimo_post_fecha'].isoformat() if r['ultimo_post_fecha'] else None,
+        })
+    return {'forums': forums}
+
+
+def obtener_detalle_foro(persona_id, usuario_id, foro_id):
+    """
+    Retorna los datos del foro y su hilo de aportes.
+    Verifica que el estudiante pertenezca a la materia asignada del foro.
+    """
+    # 1. Obtener datos del foro y validar si el estudiante está matriculado en la materia
+    sql_foro = """
+        SELECT f.id,
+               ma.id as materia_asignada_id,
+               asig.nombre as materia_nombre,
+               a.nombre as titulo,
+               COALESCE(a.descripcion, '') as descripcion,
+               COALESCE(a.fechainicio, f.fecha_creacion) as fecha_creacion,
+               a.fechafin as fecha_cierre,
+               CASE 
+                   WHEN a.cerrada = TRUE THEN TRUE
+                   WHEN a.fechafin IS NOT NULL AND a.fechafin < NOW() THEN TRUE
+                   ELSE FALSE
+               END as esta_cerrado,
+               TRIM(COALESCE(prof_p.nombres, '') || ' ' || COALESCE(prof_p.apellido_1, '')) as docente_nombre,
+               (SELECT COUNT(pf.id) FROM ctr_postforo pf WHERE pf.foro_id = f.id AND pf.status = TRUE) as total_posts,
+               e.persona_id as matriculado_persona_id
+        FROM ctr_foro f
+        JOIN ctr_actividad a ON a.id = f.actividad_id AND a.status = TRUE
+        JOIN ctr_planificacionsemanalcontenido psc ON psc.id = a.planificacionsemanal_id AND psc.status = TRUE
+        JOIN ctr_materia mat ON mat.id = psc.materia_id
+        JOIN ctr_asignaturamallacurricular amc ON amc.id = mat.asignaturamalla_id
+        JOIN ctr_asignatura asig ON asig.id = amc.asignatura_id
+        LEFT JOIN ctr_profesormateria pm ON pm.materia_id = mat.id AND pm.status = TRUE
+        LEFT JOIN ctr_profesor prof ON prof.id = pm.profesor_id
+        LEFT JOIN ctr_persona prof_p ON prof_p.id = prof.persona_id
+        JOIN ctr_materiaasignada ma ON ma.materia_id = mat.id AND ma.status = TRUE
+        JOIN ctr_nivelmatriculdo nm ON nm.id = ma.nivelmatriculado_id AND nm.status = TRUE
+        JOIN ctr_matricula m ON m.id = nm.matricula_id AND m.status = TRUE
+        JOIN ctr_estudiante e ON e.id = m.estudiante_id AND e.status = TRUE
+        WHERE f.id = %s AND e.persona_id = %s AND f.status = TRUE
+        LIMIT 1
+    """
+    foro = _query_one(sql_foro, [foro_id, persona_id])
+    if not foro:
+        existe = _query_one("SELECT id FROM ctr_foro WHERE id = %s AND status = TRUE", [foro_id])
+        if existe:
+            raise PermissionError("No perteneces a la materia correspondiente a este foro.")
+        raise LookupError("El foro especificado no existe o no está disponible.")
+
+    # 2. Consultar aportes (posts) del foro
+    sql_posts = """
+        SELECT pf.id,
+               pf.foro_id,
+               CASE 
+                   WHEN pf.profesor_id IS NOT NULL THEN prof_p.id
+                   ELSE COALESCE(p_est.id, pf.usuario_creacion_id)
+               END as autor_id,
+               CASE 
+                   WHEN pf.profesor_id IS NOT NULL THEN TRIM(COALESCE(prof_p.nombres, '') || ' ' || COALESCE(prof_p.apellido_1, ''))
+                   ELSE TRIM(COALESCE(p_est.nombres, '') || ' ' || COALESCE(p_est.apellido_1, '') || ' ' || COALESCE(p_est.apellido_2, ''))
+               END as autor_nombre,
+               CASE 
+                   WHEN pf.profesor_id IS NOT NULL THEN TRUE
+                   ELSE FALSE
+               END as es_docente,
+               CASE 
+                   WHEN pf.usuario_creacion_id = %s OR p_est.id = %s THEN TRUE
+                   ELSE FALSE
+               END as es_propio,
+               pf.contenido as mensaje,
+               pf.fecha,
+               pf.fecha_creacion,
+               pf.fecha_modificacion
+        FROM ctr_postforo pf
+        LEFT JOIN ctr_materiaasignada ma ON ma.id = pf.materiaasignada_id
+        LEFT JOIN ctr_nivelmatriculdo nm ON nm.id = ma.nivelmatriculado_id
+        LEFT JOIN ctr_matricula m ON m.id = nm.matricula_id
+        LEFT JOIN ctr_estudiante e ON e.id = m.estudiante_id
+        LEFT JOIN ctr_persona p_est ON p_est.id = e.persona_id
+        LEFT JOIN ctr_profesor prof ON prof.id = pf.profesor_id
+        LEFT JOIN ctr_persona prof_p ON prof_p.id = prof.persona_id
+        WHERE pf.foro_id = %s AND pf.status = TRUE
+        ORDER BY pf.fecha ASC, pf.id ASC
+    """
+    post_rows = _query_all(sql_posts, [usuario_id, persona_id, foro_id])
+    posts = []
+    for p in post_rows:
+        fecha_edicion = None
+        if p.get('fecha_modificacion') and p.get('fecha_creacion'):
+            if (p['fecha_modificacion'] - p['fecha_creacion']).total_seconds() > 2:
+                fecha_edicion = p['fecha_modificacion'].isoformat()
+
+        posts.append({
+            'id': p['id'],
+            'foro_id': p['foro_id'],
+            'autor_id': p['autor_id'] or 0,
+            'autor_nombre': p['autor_nombre'] or 'Usuario',
+            'es_docente': bool(p['es_docente']),
+            'es_propio': bool(p['es_propio']),
+            'mensaje': p['mensaje'] or '',
+            'fecha': p['fecha'].isoformat() if p.get('fecha') else (p['fecha_creacion'].isoformat() if p.get('fecha_creacion') else None),
+            'fecha_edicion': fecha_edicion,
+        })
+
+    return {
+        'forum': {
+            'id': foro['id'],
+            'materia_asignada_id': foro['materia_asignada_id'],
+            'materia_nombre': foro['materia_nombre'],
+            'titulo': foro['titulo'],
+            'descripcion': foro['descripcion'] or '',
+            'fecha_creacion': foro['fecha_creacion'].isoformat() if foro['fecha_creacion'] else None,
+            'fecha_cierre': foro['fecha_cierre'].isoformat() if foro['fecha_cierre'] else None,
+            'esta_cerrado': bool(foro['esta_cerrado']),
+            'docente_nombre': foro['docente_nombre'] or 'Docente titular',
+            'total_posts': int(foro['total_posts'] or 0),
+        },
+        'posts': posts
+    }
+
+
+def publicar_post_foro(persona_id, usuario_id, foro_id, mensaje):
+    """
+    Inserta un nuevo aporte de estudiante en el foro.
+    Valida que el foro no esté cerrado y que el estudiante pertenezca a la materia.
+    """
+    sql_valida = """
+        SELECT f.id,
+               a.cerrada,
+               a.fechafin,
+               ma.id as materia_asignada_id,
+               p_est.id as persona_id,
+               TRIM(COALESCE(p_est.nombres, '') || ' ' || COALESCE(p_est.apellido_1, '') || ' ' || COALESCE(p_est.apellido_2, '')) as estudiante_nombre
+        FROM ctr_foro f
+        JOIN ctr_actividad a ON a.id = f.actividad_id AND a.status = TRUE
+        JOIN ctr_planificacionsemanalcontenido psc ON psc.id = a.planificacionsemanal_id AND psc.status = TRUE
+        JOIN ctr_materia mat ON mat.id = psc.materia_id
+        JOIN ctr_materiaasignada ma ON ma.materia_id = mat.id AND ma.status = TRUE
+        JOIN ctr_nivelmatriculdo nm ON nm.id = ma.nivelmatriculado_id AND nm.status = TRUE
+        JOIN ctr_matricula m ON m.id = nm.matricula_id AND m.status = TRUE
+        JOIN ctr_estudiante e ON e.id = m.estudiante_id AND e.status = TRUE
+        JOIN ctr_persona p_est ON p_est.id = e.persona_id
+        WHERE f.id = %s AND e.persona_id = %s AND f.status = TRUE
+        LIMIT 1
+    """
+    row = _query_one(sql_valida, [foro_id, persona_id])
+    if not row:
+        existe = _query_one("SELECT id FROM ctr_foro WHERE id = %s AND status = TRUE", [foro_id])
+        if existe:
+            raise PermissionError("No perteneces a la materia de este foro.")
+        raise LookupError("El foro especificado no existe.")
+
+    from django.utils import timezone
+    now = timezone.now()
+    if row.get('cerrada') or (row.get('fechafin') and row['fechafin'] < now):
+        raise ValueError("El foro se encuentra cerrado para nuevas publicaciones.")
+
+    materia_asignada_id = row['materia_asignada_id']
+    estudiante_nombre = row['estudiante_nombre']
+
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            INSERT INTO ctr_postforo (
+                fecha_creacion, fecha_modificacion, status, contenido, fecha,
+                foro_id, materiaasignada_id, usuario_creacion_id, usuario_modificacion_id
+            ) VALUES (
+                NOW(), NOW(), TRUE, %s, NOW(),
+                %s, %s, %s, %s
+            ) RETURNING id, fecha
+        """, [mensaje.strip(), foro_id, materia_asignada_id, usuario_id, usuario_id])
+        insert_row = cursor.fetchone()
+        post_id = insert_row[0]
+        fecha_post = insert_row[1]
+
+    return {
+        'id': post_id,
+        'foro_id': foro_id,
+        'autor_id': persona_id,
+        'autor_nombre': estudiante_nombre,
+        'es_docente': False,
+        'es_propio': True,
+        'mensaje': mensaje.strip(),
+        'fecha': fecha_post.isoformat() if fecha_post else now.isoformat(),
+        'fecha_edicion': None,
+    }
+
+
+def editar_post_foro(persona_id, usuario_id, post_id, mensaje):
+    """
+    Edita un aporte propio en un foro.
+    Solo el autor original puede editarlo.
+    """
+    sql_check = """
+        SELECT pf.id, pf.foro_id, pf.usuario_creacion_id, pf.fecha,
+               e.persona_id,
+               TRIM(COALESCE(p_est.nombres, '') || ' ' || COALESCE(p_est.apellido_1, '') || ' ' || COALESCE(p_est.apellido_2, '')) as estudiante_nombre
+        FROM ctr_postforo pf
+        LEFT JOIN ctr_materiaasignada ma ON ma.id = pf.materiaasignada_id
+        LEFT JOIN ctr_nivelmatriculdo nm ON nm.id = ma.nivelmatriculado_id
+        LEFT JOIN ctr_matricula m ON m.id = nm.matricula_id
+        LEFT JOIN ctr_estudiante e ON e.id = m.estudiante_id
+        LEFT JOIN ctr_persona p_est ON p_est.id = e.persona_id
+        WHERE pf.id = %s AND pf.status = TRUE
+        LIMIT 1
+    """
+    post = _query_one(sql_check, [post_id])
+    if not post:
+        raise LookupError("El aporte especificado no existe o fue eliminado.")
+
+    es_autor = (post['usuario_creacion_id'] == usuario_id) or (post.get('persona_id') == persona_id)
+    if not es_autor:
+        raise PermissionError("Solo el autor original puede editar este aporte.")
+
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            UPDATE ctr_postforo
+            SET contenido = %s,
+                fecha_modificacion = NOW(),
+                usuario_modificacion_id = %s
+            WHERE id = %s
+            RETURNING id, fecha_modificacion
+        """, [mensaje.strip(), usuario_id, post_id])
+        upd = cursor.fetchone()
+        fecha_edicion = upd[1]
+
+    return {
+        'id': post['id'],
+        'foro_id': post['foro_id'],
+        'autor_id': persona_id,
+        'autor_nombre': post['estudiante_nombre'] or 'Estudiante',
+        'es_docente': False,
+        'es_propio': True,
+        'mensaje': mensaje.strip(),
+        'fecha': post['fecha'].isoformat() if post.get('fecha') else None,
+        'fecha_edicion': fecha_edicion.isoformat() if fecha_edicion else None,
+    }
+
+
+def eliminar_post_foro(persona_id, usuario_id, post_id):
+    """
+    Elimina (soft delete) un aporte propio en un foro.
+    Solo el autor original puede eliminarlo.
+    """
+    sql_check = """
+        SELECT pf.id, pf.usuario_creacion_id, e.persona_id
+        FROM ctr_postforo pf
+        LEFT JOIN ctr_materiaasignada ma ON ma.id = pf.materiaasignada_id
+        LEFT JOIN ctr_nivelmatriculdo nm ON nm.id = ma.nivelmatriculado_id
+        LEFT JOIN ctr_matricula m ON m.id = nm.matricula_id
+        LEFT JOIN ctr_estudiante e ON e.id = m.estudiante_id
+        WHERE pf.id = %s AND pf.status = TRUE
+        LIMIT 1
+    """
+    post = _query_one(sql_check, [post_id])
+    if not post:
+        raise LookupError("El aporte no existe o ya fue eliminado.")
+
+    es_autor = (post['usuario_creacion_id'] == usuario_id) or (post.get('persona_id') == persona_id)
+    if not es_autor:
+        raise PermissionError("Solo el autor original puede eliminar este aporte.")
+
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            UPDATE ctr_postforo
+            SET status = FALSE,
+                fecha_modificacion = NOW(),
+                usuario_modificacion_id = %s
+            WHERE id = %s
+        """, [usuario_id, post_id])
+
+    return {'id': post_id}
+
+
+def _extraer_asunto_y_pregunta(texto):
+    """
+    Extrae asunto y pregunta del texto almacenado en ctr_consultadocente.
+    Soporta formato institucional [Asunto]\nPregunta o texto libre.
+    """
+    if not texto:
+        return 'Consulta al docente', ''
+    
+    t = texto.strip()
+    if t.startswith('[') and ']' in t:
+        idx = t.find(']')
+        asunto = t[1:idx].strip()
+        pregunta = t[idx + 1:].strip()
+        return asunto or 'Consulta al docente', pregunta or t
+    
+    lineas = t.split('\n', 1)
+    if len(lineas) > 1 and len(lineas[0]) < 80:
+        return lineas[0].strip(), lineas[1].strip()
+
+    return 'Consulta al docente', t
+
+
+def obtener_consultas_docente(persona_id, materia_asignada_id):
+    """
+    Lista las consultas privadas del estudiante en una materia y sus respuestas docentes.
+    Calcula el total de respuestas nuevas (sin leer).
+    """
+    materia_info = verificar_matricula_estudiante_materia(persona_id, materia_asignada_id)
+
+    # 1. Obtener todas las preguntas del estudiante (es_docente = FALSE)
+    sql_preguntas = """
+        SELECT cd.id, cd.texto, cd.fecha_creacion, cd.leido, cd.leido_at
+        FROM ctr_consultadocente cd
+        WHERE cd.materiaasignada_id = %s AND cd.es_docente = FALSE AND cd.status = TRUE
+        ORDER BY cd.fecha_creacion DESC, cd.id DESC
+    """
+    preguntas = _query_all(sql_preguntas, [materia_asignada_id])
+
+    # 2. Obtener respuestas docentes asociadas (es_docente = TRUE)
+    sql_respuestas = """
+        SELECT cd.id, cd.texto, cd.fecha_creacion, cd.leido, cd.leido_at
+        FROM ctr_consultadocente cd
+        WHERE cd.materiaasignada_id = %s AND cd.es_docente = TRUE AND cd.status = TRUE
+        ORDER BY cd.fecha_creacion ASC
+    """
+    respuestas_docente = _query_all(sql_respuestas, [materia_asignada_id])
+
+    inquiries = []
+    total_nuevas = 0
+
+    for q in preguntas:
+        asunto, pregunta_txt = _extraer_asunto_y_pregunta(q['texto'])
+        q_fecha = q['fecha_creacion']
+
+        # Encontrar la respuesta docente posterior a la pregunta
+        resp_encontrada = None
+        for r in respuestas_docente:
+            if r['fecha_creacion'] >= q_fecha:
+                resp_encontrada = r
+                break
+
+        if resp_encontrada:
+            respondida = True
+            respuesta_txt = resp_encontrada['texto']
+            fecha_resp = resp_encontrada['fecha_creacion'].isoformat()
+            leida = bool(resp_encontrada['leido'])
+            if not leida:
+                total_nuevas += 1
+        else:
+            respondida = False
+            respuesta_txt = None
+            fecha_resp = None
+            leida = bool(q['leido'])
+
+        inquiries.append({
+            'id': q['id'],
+            'materia_asignada_id': materia_asignada_id,
+            'materia_nombre': materia_info['materia_nombre'],
+            'docente_nombre': materia_info['docente_nombre'] or 'Docente titular',
+            'estudiante_id': materia_info['estudiante_id'],
+            'estudiante_nombre': materia_info['estudiante_nombre'],
+            'asunto': asunto,
+            'pregunta': pregunta_txt,
+            'fecha_pregunta': q['fecha_creacion'].isoformat() if q['fecha_creacion'] else None,
+            'respuesta': respuesta_txt,
+            'fecha_respuesta': fecha_resp,
+            'respondida': respondida,
+            'leida': leida,
+        })
+
+    return {
+        'total_nuevas': total_nuevas,
+        'inquiries': inquiries
+    }
+
+
+def crear_consulta_docente(persona_id, usuario_id, materia_asignada_id, asunto, pregunta):
+    """
+    Registra una nueva consulta privada enviada al docente de la materia.
+    """
+    materia_info = verificar_matricula_estudiante_materia(persona_id, materia_asignada_id)
+
+    texto_completo = f"[{asunto.strip()}]\n{pregunta.strip()}"
+
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            INSERT INTO ctr_consultadocente (
+                fecha_creacion, fecha_modificacion, status,
+                es_docente, texto, imagen, leido, leido_at,
+                autor_id, materiaasignada_id, usuario_creacion_id, usuario_modificacion_id
+            ) VALUES (
+                NOW(), NOW(), TRUE,
+                FALSE, %s, '', FALSE, NULL,
+                %s, %s, %s, %s
+            ) RETURNING id, fecha_creacion
+        """, [texto_completo, persona_id, materia_asignada_id, usuario_id, usuario_id])
+        row = cursor.fetchone()
+        inquiry_id = row[0]
+        fecha_creacion = row[1]
+
+    return {
+        'id': inquiry_id,
+        'materia_asignada_id': materia_asignada_id,
+        'materia_nombre': materia_info['materia_nombre'],
+        'docente_nombre': materia_info['docente_nombre'] or 'Docente titular',
+        'estudiante_id': materia_info['estudiante_id'],
+        'estudiante_nombre': materia_info['estudiante_nombre'],
+        'asunto': asunto.strip(),
+        'pregunta': pregunta.strip(),
+        'fecha_pregunta': fecha_creacion.isoformat() if fecha_creacion else None,
+        'respuesta': None,
+        'fecha_respuesta': None,
+        'respondida': False,
+        'leida': False,
+    }
+
+
+# ===========================================================================
+# Tarea 13: Calendario y Cronograma Institucional (ctr_actividad, ctr_cronogramaacademico, ctr_semanacronograma, ctr_cronogramaevaluativo)
+# ===========================================================================
+
+def obtener_calendario_completo(persona_id, periodo_id, vista='agenda', fecha_ref=None, subject_id=None):
+    """
+    Obtiene todas las fechas y eventos del estudiante en un solo lugar:
+    1. Entregas y tareas de sus materias (ctr_actividad)
+    2. Semanas del cronograma academico del periodo (ctr_semanacronograma)
+    3. Hitos del cronograma evaluativo institucional (ctr_cronogramaevaluativo / ctr_detallecronogramaevaluativo)
+    4. Lista de materias matriculadas para el filtro por asignatura
+    """
+    from django.utils import timezone
+    now = timezone.now()
+
+    # 1. Obtener lista de materias matriculadas para filtro
+    sql_materias = """
+        SELECT DISTINCT m.id AS materia_id, ma.id AS materia_asignada_id,
+               asig.nombre AS materia_nombre, COALESCE(asig.color, '#0b3b60') AS materia_color
+        FROM ctr_estudiante est
+        JOIN ctr_matricula mat ON mat.estudiante_id = est.id AND mat.status = TRUE
+        JOIN ctr_periodolectivo pl ON pl.id = mat.periodolectivo_id
+        JOIN ctr_periodo per ON per.id = pl.periodo_id
+        JOIN ctr_nivelmatriculdo nm ON nm.matricula_id = mat.id AND nm.status = TRUE
+        JOIN ctr_materiaasignada ma ON ma.nivelmatriculado_id = nm.id AND ma.status = TRUE
+        JOIN ctr_materia m ON m.id = ma.materia_id
+        JOIN ctr_asignaturamallacurricular amc ON amc.id = m.asignaturamalla_id
+        JOIN ctr_asignatura asig ON asig.id = amc.asignatura_id
+        WHERE est.persona_id = %s AND per.id = %s
+        ORDER BY asig.nombre ASC
+    """
+    rows_mat = _query_all(sql_materias, [persona_id, periodo_id])
+    materias_filtro = [
+        {
+            'id': r['materia_id'],
+            'materia_asignada_id': r['materia_asignada_id'],
+            'nombre': r['materia_nombre'],
+            'color': r['materia_color'],
+        }
+        for r in rows_mat
+    ]
+
+    # 2. Obtener actividades de las materias
+    sql_act = """
+        SELECT a.id, a.nombre, a.descripcion, a.fechainicio, a.fechafin,
+               a.cerrada, a.ponderacion, a.tipoentrega,
+               m.id as materia_id, ma.id as materia_asignada_id,
+               asig.nombre as materia_nombre, COALESCE(asig.color, '#0b3b60') as materia_color,
+               e_act.id as entrega_id, e_act.fecha as fecha_entrega,
+               n_act.nota
+        FROM ctr_estudiante est
+        JOIN ctr_matricula mat ON mat.estudiante_id = est.id AND mat.status = TRUE
+        JOIN ctr_periodolectivo pl ON pl.id = mat.periodolectivo_id
+        JOIN ctr_periodo per ON per.id = pl.periodo_id
+        JOIN ctr_nivelmatriculdo nm ON nm.matricula_id = mat.id AND nm.status = TRUE
+        JOIN ctr_materiaasignada ma ON ma.nivelmatriculado_id = nm.id AND ma.status = TRUE
+        JOIN ctr_materia m ON m.id = ma.materia_id
+        JOIN ctr_asignaturamallacurricular amc ON amc.id = m.asignaturamalla_id
+        JOIN ctr_asignatura asig ON asig.id = amc.asignatura_id
+        JOIN ctr_planificacionsemanalcontenido plan ON plan.materia_id = m.id AND plan.status = TRUE
+        JOIN ctr_actividad a ON a.planificacionsemanal_id = plan.id AND a.status = TRUE AND (a.oculto = FALSE OR a.oculto IS NULL)
+        LEFT JOIN ctr_entregaactividad e_act ON e_act.actividad_id = a.id AND e_act.materiaasignada_id = ma.id AND e_act.status = TRUE
+        LEFT JOIN ctr_notaactividad n_act ON n_act.actividad_id = a.id AND n_act.materiaasignada_id = ma.id AND n_act.status = TRUE
+        WHERE est.persona_id = %s AND per.id = %s
+    """
+    params_act = [persona_id, periodo_id]
+    if subject_id:
+        sql_act += " AND (m.id = %s OR ma.id = %s)"
+        params_act.extend([subject_id, subject_id])
+
+    sql_act += " ORDER BY a.fechafin ASC NULLS LAST, a.id DESC"
+    rows_act = _query_all(sql_act, params_act)
+
+    items = []
+    actividades_retro = []
+
+    for r in rows_act:
+        fechafin_dt = r['fechafin']
+        is_expired = bool(r['cerrada']) or (fechafin_dt is not None and fechafin_dt < now)
+        entregada = r['entrega_id'] is not None
+        vencida = is_expired and not entregada
+
+        fecha_str = None
+        hora_str = None
+        if fechafin_dt:
+            if hasattr(fechafin_dt, 'strftime'):
+                fecha_str = fechafin_dt.strftime('%Y-%m-%d')
+                hora_str = fechafin_dt.strftime('%H:%M')
+            else:
+                fecha_str = str(fechafin_dt)[:10]
+
+        act_data = {
+            'id': f"act-{r['id']}",
+            'actividad_id': r['id'],
+            'tipo': 'actividad',
+            'titulo': r['nombre'],
+            'descripcion': r['descripcion'] or '',
+            'fecha': fecha_str,
+            'hora': hora_str,
+            'fecha_inicio': r['fechainicio'].isoformat() if hasattr(r['fechainicio'], 'isoformat') else str(r['fechainicio']) if r['fechainicio'] else None,
+            'fecha_fin': fechafin_dt.isoformat() if hasattr(fechafin_dt, 'isoformat') else str(fechafin_dt) if fechafin_dt else None,
+            'materia_id': r['materia_id'],
+            'materia_asignada_id': r['materia_asignada_id'],
+            'materia_nombre': r['materia_nombre'],
+            'materia_color': r['materia_color'],
+            'entregada': entregada,
+            'vencida': vencida,
+            'cerrada': bool(r['cerrada']),
+            'ponderacion': float(r['ponderacion']) if r['ponderacion'] is not None else 10.0,
+            'nota': float(r['nota']) if r['nota'] is not None else None,
+            'tipoentrega': r['tipoentrega'] or 1,
+        }
+        items.append(act_data)
+
+        retro_item = dict(r)
+        retro_item['entregada'] = entregada
+        retro_item['vencida'] = vencida
+        retro_item['ponderacion'] = act_data['ponderacion']
+        retro_item['fechainicio'] = act_data['fecha_inicio']
+        retro_item['fechafin'] = act_data['fecha_fin']
+        retro_item['fecha_entrega'] = r['fecha_entrega'].isoformat() if hasattr(r['fecha_entrega'], 'isoformat') else str(r['fecha_entrega']) if r['fecha_entrega'] else None
+        actividades_retro.append(retro_item)
+
+    # 3. Cronograma Academico Institucional (Semanas)
+    cronograma_info = None
+    sql_crono = """
+        SELECT ca.id, ca.nombre, ca.inicio, ca.fin
+        FROM ctr_cronogramaacademico ca
+        WHERE ca.periodo_id = %s AND ca.status = TRUE
+        ORDER BY ca.id DESC LIMIT 1
+    """
+    rows_crono = _query_all(sql_crono, [periodo_id])
+    if rows_crono:
+        c_row = rows_crono[0]
+        crono_id = c_row['id']
+        sql_semanas = """
+            SELECT s.id, s.orden, s.nombre, s.inicio, s.fin
+            FROM ctr_semanacronograma s
+            WHERE s.cronograma_id = %s AND s.status = TRUE
+            ORDER BY s.orden ASC
+        """
+        rows_sem = _query_all(sql_semanas, [crono_id])
+        semanas_list = []
+        for s in rows_sem:
+            sem_inicio = s['inicio'].strftime('%Y-%m-%d') if hasattr(s['inicio'], 'strftime') else str(s['inicio']) if s['inicio'] else None
+            sem_fin = s['fin'].strftime('%Y-%m-%d') if hasattr(s['fin'], 'strftime') else str(s['fin']) if s['fin'] else None
+            s_dict = {
+                'id': s['id'],
+                'orden': s['orden'],
+                'nombre': s['nombre'],
+                'inicio': sem_inicio,
+                'fin': sem_fin,
+            }
+            semanas_list.append(s_dict)
+
+            if not subject_id and sem_inicio:
+                items.append({
+                    'id': f"sem-{s['id']}",
+                    'tipo': 'institucional',
+                    'titulo': f"Inicio {s['nombre']}",
+                    'descripcion': f"Periodo de clases semanal ({sem_inicio} al {sem_fin})",
+                    'fecha': sem_inicio,
+                    'hora': '07:00',
+                    'fecha_inicio': sem_inicio,
+                    'fecha_fin': sem_fin,
+                    'materia_id': None,
+                    'materia_asignada_id': None,
+                    'materia_nombre': 'Institucional',
+                    'materia_color': '#0b3b60',
+                    'orden': s['orden'],
+                })
+
+        cronograma_info = {
+            'id': c_row['id'],
+            'nombre': c_row['nombre'],
+            'inicio': c_row['inicio'].strftime('%Y-%m-%d') if hasattr(c_row['inicio'], 'strftime') else str(c_row['inicio']) if c_row['inicio'] else None,
+            'fin': c_row['fin'].strftime('%Y-%m-%d') if hasattr(c_row['fin'], 'strftime') else str(c_row['fin']) if c_row['fin'] else None,
+            'semanas': semanas_list,
+        }
+
+    # 4. Cronograma Evaluativo Institucional (Bimestres / Evaluaciones)
+    sql_eval = """
+        SELECT d.id, d.inicio, d.fin, i.nombre as item_nombre, i.alias as item_alias,
+               COALESCE(ime.porcentaje, 0) as porcentaje
+        FROM ctr_cronogramaevaluativo ce
+        JOIN ctr_detallecronogramaevaluativo d ON d.cronograma_id = ce.id AND d.status = TRUE
+        JOIN ctr_itemevaluacion i ON i.id = d.item_id AND i.status = TRUE
+        LEFT JOIN ctr_itemmodeloevaluativo ime ON ime.itemevaluacion_id = i.id AND ime.modeloevaluativo_id = ce.modeloevaluativo_id
+        WHERE ce.status = TRUE
+        ORDER BY d.inicio ASC
+    """
+    rows_eval = _query_all(sql_eval, [])
+    evaluaciones_list = []
+    for ev in rows_eval:
+        ev_inicio = ev['inicio'].strftime('%Y-%m-%d') if hasattr(ev['inicio'], 'strftime') else str(ev['inicio']) if ev['inicio'] else None
+        ev_fin = ev['fin'].strftime('%Y-%m-%d') if hasattr(ev['fin'], 'strftime') else str(ev['fin']) if ev['fin'] else None
+        porc = float(ev['porcentaje']) if ev['porcentaje'] is not None else 0.0
+
+        ev_dict = {
+            'id': ev['id'],
+            'nombre': ev['item_nombre'],
+            'alias': ev['item_alias'],
+            'inicio': ev_inicio,
+            'fin': ev_fin,
+            'porcentaje': porc,
+        }
+        evaluaciones_list.append(ev_dict)
+
+        if not subject_id and ev_inicio:
+            items.append({
+                'id': f"eval-{ev['id']}",
+                'tipo': 'evaluacion',
+                'titulo': f"Periodo Evaluativo: {ev['item_nombre']}",
+                'descripcion': f"Cierre evaluativo {ev['item_alias']} con ponderacion de {porc}%",
+                'fecha': ev_fin or ev_inicio,
+                'hora': '23:59',
+                'fecha_inicio': ev_inicio,
+                'fecha_fin': ev_fin,
+                'materia_id': None,
+                'materia_asignada_id': None,
+                'materia_nombre': 'Evaluación Institucional',
+                'materia_color': '#8B5CF6',
+                'porcentaje': porc,
+            })
+
+    items.sort(key=lambda x: (x['fecha'] or '9999-12-31', x.get('hora') or '00:00'))
+
+    pending_count = len([a for a in items if a.get('tipo') == 'actividad' and not a.get('entregada') and not a.get('vencida')])
+
+    return {
+        'items': items,
+        'activities': actividades_retro,
+        'cronograma_academico': cronograma_info,
+        'cronograma_evaluativo': evaluaciones_list,
+        'subjects': materias_filtro,
+        'total': len(items),
+        'pending_count': pending_count,
     }

@@ -684,6 +684,7 @@ from app.student_ports import (
     entregar_actividad,
     eliminar_entrega_actividad,
     obtener_actividades_pendientes,
+    obtener_calendario_completo,
 )
 
 
@@ -810,7 +811,11 @@ class StudentActivityDetailView(APIView):
 
 class StudentCalendarView(APIView):
     """
-    GET -> Actividades y calendario general del estudiante
+    GET -> Actividades, cronograma institucional y evaluaciones del estudiante (Tarea 13)
+    Soporta query params:
+      - view: 'agenda' | 'month' | 'week'
+      - date: YYYY-MM-DD
+      - subject_id: int (para filtrar por materia)
     """
     permission_classes = [IsAuthenticated]
 
@@ -824,8 +829,24 @@ class StudentCalendarView(APIView):
         if est is None:
             return resp.to_dict()
 
+        vista = request.query_params.get('view', 'agenda')
+        fecha_ref = request.query_params.get('date')
+        subject_id_raw = request.query_params.get('subject_id')
+        subject_id = None
+        if subject_id_raw:
+            try:
+                subject_id = int(subject_id_raw)
+            except (ValueError, TypeError):
+                subject_id = None
+
         try:
-            data = obtener_actividades_pendientes(est['persona_id'], periodo_id)
+            data = obtener_calendario_completo(
+                persona_id=est['persona_id'],
+                periodo_id=periodo_id,
+                vista=vista,
+                fecha_ref=fecha_ref,
+                subject_id=subject_id,
+            )
             resp.set_success(True)
             resp.set_message("Actividades y cronograma recuperados con exito.")
             resp.set_data(data)
@@ -1332,7 +1353,6 @@ class StudentChatTypingView(APIView):
         return resp.to_dict()
 
 
-
 class StudentQuizDetailView(APIView):
     """
     GET  /api/v1.0.0/student/quizzes/<int:cuestionario_id>/
@@ -1515,7 +1535,6 @@ class StudentQuizAttemptReviewView(APIView):
 
         return resp.to_dict()
 
-
 # ==============================================================================
 # Tarea 15: Pensiones, rubros y comprobantes de pago
 # ==============================================================================
@@ -1673,6 +1692,10 @@ class StudentSubirComprobanteView(APIView):
 
         return resp.to_dict()
 
+# =========================================================================
+# TAREA 14: PERFIL Y CARNÉ DIGITAL
+# =========================================================================
+
 class StudentProfileView(APIView):
     """
     GET /api/v1.0.0/movil/student/profile/
@@ -1785,3 +1808,300 @@ class StudentCarnetView(APIView):
         respuesta.set_status(status.HTTP_200_OK)
         return respuesta.to_dict()
 
+
+# =========================================================================
+# TAREA 12: FOROS DE DISCUSIÓN Y CONSULTAS AL DOCENTE
+# =========================================================================
+
+class StudentSubjectForumsView(APIView):
+    """
+    GET /api/v1.0.0/student/subjects/<int:materia_asignada_id>/forums/
+
+    Lista todos los foros de discusión activos correspondientes a la materia asignada.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, materia_asignada_id):
+        respuesta = RespuestaApi()
+        est = _obtener_estudiante_actual(request, respuesta)
+        if est is None:
+            return respuesta.to_dict()
+
+        try:
+            from app.student_ports import obtener_foros_materia
+            datos = obtener_foros_materia(est['persona_id'], materia_asignada_id)
+            respuesta.set_success(True)
+            respuesta.set_message('Foros de la materia recuperados con éxito.')
+            respuesta.set_data(datos)
+            respuesta.set_status(status.HTTP_200_OK)
+        except PermissionError as e:
+            respuesta.set_success(False)
+            respuesta.set_message(str(e))
+            respuesta.set_status(status.HTTP_403_FORBIDDEN)
+        except LookupError as e:
+            respuesta.set_success(False)
+            respuesta.set_message(str(e))
+            respuesta.set_status(status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            respuesta.set_success(False)
+            respuesta.set_message('Error al consultar los foros de la materia.')
+            respuesta.set_errors({'error': [str(e)]})
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return respuesta.to_dict()
+
+
+class StudentForumDetailView(APIView):
+    """
+    GET /api/v1.0.0/student/forums/<int:foro_id>/
+
+    Retorna la información cabecera del foro e historial de aportes de la discusión.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, foro_id):
+        respuesta = RespuestaApi()
+        est = _obtener_estudiante_actual(request, respuesta)
+        if est is None:
+            return respuesta.to_dict()
+
+        try:
+            from app.student_ports import obtener_detalle_foro
+            datos = obtener_detalle_foro(est['persona_id'], request.user.id, foro_id)
+            respuesta.set_success(True)
+            respuesta.set_message('Detalle del foro recuperado con éxito.')
+            respuesta.set_data(datos)
+            respuesta.set_status(status.HTTP_200_OK)
+        except PermissionError as e:
+            respuesta.set_success(False)
+            respuesta.set_message(str(e))
+            respuesta.set_status(status.HTTP_403_FORBIDDEN)
+        except LookupError as e:
+            respuesta.set_success(False)
+            respuesta.set_message(str(e))
+            respuesta.set_status(status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            respuesta.set_success(False)
+            respuesta.set_message('Error al consultar el detalle del foro.')
+            respuesta.set_errors({'error': [str(e)]})
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return respuesta.to_dict()
+
+
+class StudentForumPostCreateView(APIView):
+    """
+    POST /api/v1.0.0/student/forums/<int:foro_id>/posts/
+
+    Publica un nuevo aporte en el foro. Valida que el foro esté abierto.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, foro_id):
+        respuesta = RespuestaApi()
+        est = _obtener_estudiante_actual(request, respuesta)
+        if est is None:
+            return respuesta.to_dict()
+
+        from app.serializers import ForoPostMensajeSerializer
+        serializer = ForoPostMensajeSerializer(data=request.data)
+        if not serializer.is_valid():
+            respuesta.set_success(False)
+            respuesta.set_message('Datos del aporte inválidos.')
+            respuesta.set_errors(serializer.errors)
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+            return respuesta.to_dict()
+
+        mensaje = serializer.validated_data['mensaje']
+
+        try:
+            from app.student_ports import publicar_post_foro
+            nuevo_post = publicar_post_foro(est['persona_id'], request.user.id, foro_id, mensaje)
+            respuesta.set_success(True)
+            respuesta.set_message('Aporte publicado en el foro con éxito.')
+            respuesta.set_data(nuevo_post)
+            respuesta.set_status(status.HTTP_201_CREATED)
+        except ValueError as e:
+            respuesta.set_success(False)
+            respuesta.set_message(str(e))
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+        except PermissionError as e:
+            respuesta.set_success(False)
+            respuesta.set_message(str(e))
+            respuesta.set_status(status.HTTP_403_FORBIDDEN)
+        except LookupError as e:
+            respuesta.set_success(False)
+            respuesta.set_message(str(e))
+            respuesta.set_status(status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            respuesta.set_success(False)
+            respuesta.set_message('Error al publicar el aporte en el foro.')
+            respuesta.set_errors({'error': [str(e)]})
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return respuesta.to_dict()
+
+
+class StudentForumPostActionView(APIView):
+    """
+    PUT /api/v1.0.0/student/forums/posts/<int:post_id>/
+    DELETE /api/v1.0.0/student/forums/posts/<int:post_id>/
+
+    Permite editar o eliminar un aporte propio en el foro.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, post_id):
+        respuesta = RespuestaApi()
+        est = _obtener_estudiante_actual(request, respuesta)
+        if est is None:
+            return respuesta.to_dict()
+
+        from app.serializers import ForoPostMensajeSerializer
+        serializer = ForoPostMensajeSerializer(data=request.data)
+        if not serializer.is_valid():
+            respuesta.set_success(False)
+            respuesta.set_message('Datos del aporte inválidos.')
+            respuesta.set_errors(serializer.errors)
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+            return respuesta.to_dict()
+
+        mensaje = serializer.validated_data['mensaje']
+
+        try:
+            from app.student_ports import editar_post_foro
+            post_editado = editar_post_foro(est['persona_id'], request.user.id, post_id, mensaje)
+            respuesta.set_success(True)
+            respuesta.set_message('Aporte actualizado con éxito.')
+            respuesta.set_data(post_editado)
+            respuesta.set_status(status.HTTP_200_OK)
+        except PermissionError as e:
+            respuesta.set_success(False)
+            respuesta.set_message(str(e))
+            respuesta.set_status(status.HTTP_403_FORBIDDEN)
+        except LookupError as e:
+            respuesta.set_success(False)
+            respuesta.set_message(str(e))
+            respuesta.set_status(status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            respuesta.set_success(False)
+            respuesta.set_message('Error al actualizar el aporte.')
+            respuesta.set_errors({'error': [str(e)]})
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return respuesta.to_dict()
+
+    def delete(self, request, post_id):
+        respuesta = RespuestaApi()
+        est = _obtener_estudiante_actual(request, respuesta)
+        if est is None:
+            return respuesta.to_dict()
+
+        try:
+            from app.student_ports import eliminar_post_foro
+            resultado = eliminar_post_foro(est['persona_id'], request.user.id, post_id)
+            respuesta.set_success(True)
+            respuesta.set_message('Aporte eliminado con éxito.')
+            respuesta.set_data(resultado)
+            respuesta.set_status(status.HTTP_200_OK)
+        except PermissionError as e:
+            respuesta.set_success(False)
+            respuesta.set_message(str(e))
+            respuesta.set_status(status.HTTP_403_FORBIDDEN)
+        except LookupError as e:
+            respuesta.set_success(False)
+            respuesta.set_message(str(e))
+            respuesta.set_status(status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            respuesta.set_success(False)
+            respuesta.set_message('Error al eliminar el aporte.')
+            respuesta.set_errors({'error': [str(e)]})
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return respuesta.to_dict()
+
+
+class StudentSubjectInquiriesView(APIView):
+    """
+    GET /api/v1.0.0/student/subjects/<int:materia_asignada_id>/inquiries/
+    POST /api/v1.0.0/student/subjects/<int:materia_asignada_id>/inquiries/
+
+    Lista las consultas privadas del estudiante al docente de la materia y permite enviar nuevas inquietudes.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, materia_asignada_id):
+        respuesta = RespuestaApi()
+        est = _obtener_estudiante_actual(request, respuesta)
+        if est is None:
+            return respuesta.to_dict()
+
+        try:
+            from app.student_ports import obtener_consultas_docente
+            datos = obtener_consultas_docente(est['persona_id'], materia_asignada_id)
+            respuesta.set_success(True)
+            respuesta.set_message('Consultas al docente recuperadas con éxito.')
+            respuesta.set_data(datos)
+            respuesta.set_status(status.HTTP_200_OK)
+        except PermissionError as e:
+            respuesta.set_success(False)
+            respuesta.set_message(str(e))
+            respuesta.set_status(status.HTTP_403_FORBIDDEN)
+        except LookupError as e:
+            respuesta.set_success(False)
+            respuesta.set_message(str(e))
+            respuesta.set_status(status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            respuesta.set_success(False)
+            respuesta.set_message('Error al consultar las inquietudes al docente.')
+            respuesta.set_errors({'error': [str(e)]})
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return respuesta.to_dict()
+
+    def post(self, request, materia_asignada_id):
+        respuesta = RespuestaApi()
+        est = _obtener_estudiante_actual(request, respuesta)
+        if est is None:
+            return respuesta.to_dict()
+
+        from app.serializers import ConsultaDocenteCrearSerializer
+        serializer = ConsultaDocenteCrearSerializer(data=request.data)
+        if not serializer.is_valid():
+            respuesta.set_success(False)
+            respuesta.set_message('Datos de la consulta inválidos.')
+            respuesta.set_errors(serializer.errors)
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+            return respuesta.to_dict()
+
+        asunto = serializer.validated_data['asunto']
+        pregunta = serializer.validated_data['pregunta']
+
+        try:
+            from app.student_ports import crear_consulta_docente
+            nueva_consulta = crear_consulta_docente(
+                est['persona_id'],
+                request.user.id,
+                materia_asignada_id,
+                asunto,
+                pregunta
+            )
+            respuesta.set_success(True)
+            respuesta.set_message('Consulta enviada al docente con éxito.')
+            respuesta.set_data(nueva_consulta)
+            respuesta.set_status(status.HTTP_201_CREATED)
+        except PermissionError as e:
+            respuesta.set_success(False)
+            respuesta.set_message(str(e))
+            respuesta.set_status(status.HTTP_403_FORBIDDEN)
+        except LookupError as e:
+            respuesta.set_success(False)
+            respuesta.set_message(str(e))
+            respuesta.set_status(status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            respuesta.set_success(False)
+            respuesta.set_message('Error al enviar la consulta al docente.')
+            respuesta.set_errors({'error': [str(e)]})
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return respuesta.to_dict()

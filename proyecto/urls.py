@@ -39,8 +39,28 @@ period_urlpatterns = [
     path('active/', PeriodActiveView.as_view(), name='period-active'),
 ]
 
+from django.http import FileResponse, HttpResponse, JsonResponse
+
+def docs_view(request):
+    doc_file = settings.BASE_DIR / 'docs_completo.html'
+    if doc_file.exists():
+        return FileResponse(open(doc_file, 'rb'), content_type='text/html')
+    return HttpResponse("SIGE-UBE API Móvil Online. Rutas disponibles en /api/v1.0.0/ y panel en /admin/.")
+
+def api_root_view(request):
+    return JsonResponse({
+        "isSuccess": True,
+        "message": "SIGE-UBE API Móvil v1.0.0 en línea",
+        "version": "1.0.0",
+        "docs": request.build_absolute_uri('/docs/'),
+        "status": 200
+    })
+
 urlpatterns = [
+    path('', docs_view, name='api-docs-home'),
+    path('docs/', docs_view, name='api-docs'),
     path('admin/', admin.site.urls),
+    path('api/v1.0.0/', api_root_view, name='api-root'),
     # Soporta tanto /movil/... como rutas directas sin prefijo movil
     path('api/v1.0.0/movil/', include('app.urls')),
     path('api/v1.0.0/', include('app.urls')),
