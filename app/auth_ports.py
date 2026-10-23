@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 Puertos de autenticacion para el andamio.
 
@@ -35,51 +35,64 @@ def _query_all(sql, params=()):
 
 def obtener_perfiles_usuario(user):
     """
-    Devuelve la lista de perfiles del usuario.
-
-    En el sistema real los perfiles se determinan por la existencia de registros
-    en ctr_estudiante, ctr_docente, ctr_representante, etc.
-    Aqui consultamos directamente esas tablas; si no existen, devolvemos
-    ['student'] para que los usuarios de prueba puedan entrar.
-
-    Devuelve lista de strings: ['student'], ['teacher'], etc.
+    Devuelve la lista de perfiles del usuario según la estructura real de la base de datos:
+    - auth_user.is_staff / is_superuser
+    - ctr_persona vinculada al usuario
+    - ctr_profesor (docentes)
+    - ctr_estudiante (estudiantes)
+    - ctr_familiar (representantes legales)
+    - ctr_perfilusuario / auth_group (cargos directivos y administrativos)
     """
     perfiles = []
     try:
         row = _query_one(
-            "SELECT id FROM ctr_estudiante WHERE usuario_id = %s AND status = TRUE LIMIT 1",
-            [user.id]
+            """
+            SELECT 
+                (SELECT COUNT(*) FROM ctr_estudiante e JOIN ctr_persona p ON p.id = e.persona_id WHERE p.usuario_id = %s AND e.status = true) AS es_estudiante,
+                (SELECT COUNT(*) FROM ctr_profesor pr JOIN ctr_persona p ON p.id = pr.persona_id WHERE p.usuario_id = %s AND pr.status = true) AS es_profesor,
+                (SELECT COUNT(*) FROM ctr_familiar f JOIN ctr_persona p ON p.id = f.personafamiliar_id WHERE p.usuario_id = %s AND f.representante = true AND f.status = true) AS es_representante,
+                (SELECT string_agg(g.name, ',') FROM ctr_perfilusuario pu JOIN auth_group g ON g.id = pu.grupo_id JOIN ctr_persona p ON p.id = pu.persona_id WHERE p.usuario_id = %s AND pu.status = true) AS perfiles_institucionales,
+                (SELECT string_agg(g.name, ',') FROM auth_user_groups ug JOIN auth_group g ON g.id = ug.group_id WHERE ug.user_id = %s) AS perfiles_django
+            """,
+            [user.id, user.id, user.id, user.id, user.id]
         )
         if row:
-            perfiles.append('student')
-    except Exception:
-        # La tabla no existe en el andamio: asumir estudiante para pruebas
-        perfiles.append('student')
+            if row.get('es_profesor'):
+                perfiles.append('teacher')
+            if row.get('es_estudiante'):
+                perfiles.append('student')
+            if row.get('es_representante'):
+                perfiles.append('representative')
 
-    try:
-        row = _query_one(
-            "SELECT id FROM ctr_docente WHERE usuario_id = %s AND status = TRUE LIMIT 1",
-            [user.id]
-        )
-        if row:
-            perfiles.append('teacher')
-    except Exception:
-        pass
+            # Grupos django e institucionales
+            todos_grupos = set()
+            for gfield in [row.get('perfiles_institucionales'), row.get('perfiles_django')]:
+                if gfield:
+                    for g in gfield.split(','):
+                        todos_grupos.add(g.strip().lower())
 
-    try:
-        row = _query_one(
-            "SELECT id FROM ctr_representante WHERE usuario_id = %s AND status = TRUE LIMIT 1",
-            [user.id]
-        )
-        if row:
-            perfiles.append('representative')
+            for g in todos_grupos:
+                if 'rector' in g and 'rector' not in perfiles:
+                    perfiles.append('rector')
+                elif 'vicerrector' in g and 'vicerrector' not in perfiles:
+                    perfiles.append('vicerrector')
+                elif 'director' in g and 'director' not in perfiles:
+                    perfiles.append('director')
+                elif 'administrador' in g and 'admin' not in perfiles:
+                    perfiles.append('admin')
+                elif 'dece' in g and 'dece' not in perfiles:
+                    perfiles.append('dece')
+                elif 'admision' in g and 'admisiones' not in perfiles:
+                    perfiles.append('admisiones')
+                elif 'secretaria' in g and 'secretaria' not in perfiles:
+                    perfiles.append('secretaria')
     except Exception:
         pass
 
     if user.is_staff or user.is_superuser:
-        perfiles.append('admin')
+        if 'admin' not in perfiles:
+            perfiles.append('admin')
 
-    # Garantizar al menos 'student' para usuarios de prueba en el andamio
     if not perfiles:
         perfiles = ['student']
 
