@@ -135,10 +135,10 @@ class SignInView(APIView):
             return respuesta.to_dict()
 
         perfiles = obtener_perfiles_usuario(user)
-        if 'student' not in perfiles:
+        if 'student' not in perfiles and 'representative' not in perfiles and 'representante' not in perfiles:
             respuesta.set_success(False)
             respuesta.set_message(
-                'Esta aplicacion es exclusiva para estudiantes. '
+                'Esta aplicacion esta disponible para estudiantes y representantes. '
                 'Tu usuario no tiene el perfil requerido.'
             )
             respuesta.set_status(status.HTTP_403_FORBIDDEN)

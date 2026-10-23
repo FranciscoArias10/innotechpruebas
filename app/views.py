@@ -427,3 +427,98 @@ class RepresentativeStudentSummaryView(APIView):
         return respuesta.to_dict()
 
 
+
+
+class RepresentativeStudentRubrosView(APIView):
+    """
+    GET /api/v1.0.0/movil/representative/students/<int:student_id>/fees/
+    GET /api/v1.0.0/movil/representative/students/<int:student_id>/rubros/
+
+    Devuelve el estado de cuenta y pensiones de un estudiante representado.
+    Verifica parentesco mediante EsRepresentanteDelEstudiante.
+    """
+    permission_classes = [IsAuthenticated, EsRepresentanteDelEstudiante]
+
+    def get(self, request, student_id):
+        respuesta = RespuestaApi()
+        periodo_id = request.headers.get('X-Period-ID') or request.query_params.get('periodo_id') or request.query_params.get('period_id')
+        try:
+            from app.student_ports import obtener_rubros_estudiante, _query_one
+            sql = "SELECT persona_id FROM ctr_estudiante WHERE id = %s LIMIT 1"
+            row = _query_one(sql, [student_id])
+            persona_id = row['persona_id'] if row else student_id
+
+            data = obtener_rubros_estudiante(persona_id, periodo_id)
+            respuesta.set_success(True)
+            respuesta.set_message("Rubros y pensiones obtenidos exitosamente.")
+            respuesta.set_data(data)
+            respuesta.set_status(status.HTTP_200_OK)
+        except Exception as e:
+            respuesta.set_success(False)
+            respuesta.set_message(f"Error al obtener rubros: {str(e)}")
+            respuesta.set_status(status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return respuesta.to_dict()
+
+
+class RepresentativeWardsView(APIView):
+    """
+    GET /api/v1.0.0/movil/representative/wards/
+
+    Devuelve la lista de estudiantes representados por el usuario autenticado.
+    Prioriza registros reales de la base de datos (ctr_familiar / ctr_estudiante)
+    y enlaza con el puerto institucional portal.representados_de.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from rest_framework.response import Response
+        from app.student_ports import _query_all, _query_one
+        from sige_ports import portal
+
+        persona_id = getattr(request.user, 'persona_id', None)
+        if not persona_id:
+            row_p = _query_one("SELECT id FROM ctr_persona WHERE usuario_id = %s", [request.user.id])
+            persona_id = row_p['id'] if row_p else request.user.id
+
+        # 1. Buscar en ctr_familiar en la base de datos real
+        try:
+            sql = """
+                SELECT DISTINCT
+                    e.id as estudiante_id,
+                    p.id as persona_id,
+                    TRIM(p.nombres || ' ' || p.apellido_1 || ' ' || COALESCE(p.apellido_2, '')) as nombre_completo,
+                    COALESCE(niv.nombre, 'EGB') as nivel,
+                    COALESCE(par.nombre, 'A') as paralelo,
+                    p.foto as avatar
+                FROM ctr_familiar f
+                JOIN ctr_persona pf ON pf.id = f.persona_id
+                JOIN ctr_persona p ON p.id = f.personafamiliar_id
+                JOIN ctr_estudiante e ON e.persona_id = p.id
+                LEFT JOIN ctr_matricula m ON m.estudiante_id = e.id AND m.status = TRUE
+                LEFT JOIN ctr_nivel niv ON niv.id = m.nivel_id
+                LEFT JOIN ctr_paralelo par ON par.id = m.paralelo_id
+                WHERE pf.usuario_id = %s AND f.representante = TRUE AND f.status = TRUE
+                ORDER BY nombre_completo ASC
+            """
+            db_wards = _query_all(sql, [request.user.id])
+            if db_wards:
+                return Response({
+                    'isSuccess': True,
+                    'message': 'Representados obtenidos con exito.',
+                    'data': db_wards
+                }, status=status.HTTP_200_OK)
+        except Exception:
+            pass
+
+        # 2. Si no tiene en ctr_familiar o es usuario de prueba representativo, usar puerto institucional
+        try:
+            wards = portal.representados_de(persona_id) or []
+        except Exception:
+            wards = []
+
+        return Response({
+            'isSuccess': True,
+            'message': 'Representados obtenidos con exito.',
+            'data': wards
+        }, status=status.HTTP_200_OK)

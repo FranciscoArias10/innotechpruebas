@@ -16,6 +16,8 @@ from app.views import (
     RepresentativeStudentAttendanceView,
     RepresentativeStudentScheduleView,
     RepresentativeStudentSummaryView,
+    RepresentativeStudentRubrosView,
+    RepresentativeWardsView,
 )
 from app.student_views import (
     StudentSummaryView,
@@ -146,8 +148,11 @@ urlpatterns = [
     path('student/documents/upload/', StudentDocumentUploadView.as_view(), name='movil-student-document-upload'),
 
     # Endpoints del representante
+    path('representative/wards/', RepresentativeWardsView.as_view(), name='movil-representative-wards'),
     path('representative/students/<int:student_id>/grades/', RepresentativeStudentGradesView.as_view(), name='movil-representative-student-grades'),
     path('representative/students/<int:student_id>/attendance/', RepresentativeStudentAttendanceView.as_view(), name='movil-representative-student-attendance'),
     path('representative/students/<int:student_id>/schedule/', RepresentativeStudentScheduleView.as_view(), name='movil-representative-student-schedule'),
     path('representative/students/<int:student_id>/summary/', RepresentativeStudentSummaryView.as_view(), name='movil-representative-student-summary'),
+    path('representative/students/<int:student_id>/fees/', RepresentativeStudentRubrosView.as_view(), name='movil-representative-student-fees'),
+    path('representative/students/<int:student_id>/rubros/', RepresentativeStudentRubrosView.as_view(), name='movil-representative-student-rubros'),
 ]

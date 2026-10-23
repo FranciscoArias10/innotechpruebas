@@ -130,7 +130,7 @@
     }
   ],
   "variable": [
-    { "key": "base_url", "value": "http://192.168.0.102:8000" },
+    { "key": "base_url", "value": "http://192.168.0.36:8000" },
     { "key": "access_token", "value": "" },
     { "key": "period_id", "value": "2" }
   ]

@@ -63,6 +63,137 @@ def _obtener_estudiante_actual(request, respuesta):
     return est
 
 
+def _obtener_estudiante_o_representado(request, respuesta, student_id=None):
+    """
+    Obtiene los datos del estudiante (persona_id, estudiante_id) permitiendo el acceso tanto a:
+    - Estudiantes regulares
+    - Estudiantes extraordinarios (estudiante y representante simultaneamente)
+    - Representantes legales (padres de familia) que consultan a sus representados
+    """
+    from app.student_ports import _query_one, obtener_estudiante_de_usuario
+    from sige_ports import portal
+
+    param_student_id = (
+        student_id or
+        request.headers.get('X-Student-ID') or
+        request.headers.get('X-Representado-ID') or
+        request.headers.get('X-Representado-Id') or
+        request.META.get('HTTP_X_STUDENT_ID') or
+        request.META.get('HTTP_X_REPRESENTADO_ID') or
+        request.query_params.get('student_id') or
+        request.query_params.get('estudiante_id') or
+        (request.data.get('student_id') if hasattr(request, 'data') and isinstance(request.data, dict) else None) or
+        (request.data.get('estudiante_id') if hasattr(request, 'data') and isinstance(request.data, dict) else None)
+    )
+
+    est_usuario = obtener_estudiante_de_usuario(request.user)
+
+    # 1. Si se especifico explicitamente un estudiante objetivo
+    if param_student_id:
+        try:
+            target_id = int(param_student_id)
+        except (ValueError, TypeError):
+            respuesta.set_success(False)
+            respuesta.set_message('ID de estudiante invalido.')
+            respuesta.set_status(status.HTTP_400_BAD_REQUEST)
+            return None
+
+        # Si el usuario es el estudiante solicitado (o extraordinario)
+        if est_usuario and (est_usuario.get('estudiante_id') == target_id or est_usuario.get('persona_id') == target_id):
+            return est_usuario
+
+        # Validar si el usuario representa al estudiante solicitado
+        persona_id_usuario = getattr(request.user, 'persona_id', None)
+        if not persona_id_usuario:
+            row_p = _query_one('SELECT id FROM ctr_persona WHERE usuario_id = %s', [request.user.id])
+            persona_id_usuario = row_p['id'] if row_p else request.user.id
+
+        if portal.representa_a(persona_id=persona_id_usuario, estudiante_id=target_id):
+            sql_est = """
+                SELECT e.id as estudiante_id, p.id as persona_id,
+                       p.nombres, p.apellido_1, p.apellido_2,
+                       TRIM(p.nombres || ' ' || p.apellido_1 || ' ' || COALESCE(p.apellido_2, '')) as nombre_completo,
+                       p.cedula, p.correo_institucional
+                FROM ctr_persona p
+                JOIN ctr_estudiante e ON e.persona_id = p.id
+                WHERE (e.id = %s OR p.id = %s) AND e.status = TRUE
+                LIMIT 1
+            """
+            target_est = _query_one(sql_est, [target_id, target_id])
+            if target_est:
+                return target_est
+
+            wards = portal.representados_de(persona_id_usuario) or []
+            for w in wards:
+                if w.get('estudiante_id') == target_id or w.get('persona_id') == target_id:
+                    return {
+                        'estudiante_id': w.get('estudiante_id'),
+                        'persona_id': w.get('persona_id'),
+                        'nombre_completo': w.get('nombre_completo', ''),
+                    }
+
+            return {
+                'estudiante_id': target_id,
+                'persona_id': target_id,
+                'nombre_completo': 'Estudiante Representado',
+            }
+
+        respuesta.set_success(False)
+        respuesta.set_message('No tienes permiso para acceder a la informacion de este estudiante.')
+        respuesta.set_status(status.HTTP_403_FORBIDDEN)
+        return None
+
+    # 2. Si no se envio student_id explicito:
+    # A) Si el usuario autenticado tiene perfil de estudiante (estudiante regular o extraordinario)
+    if est_usuario:
+        return est_usuario
+
+    # B) Si el usuario autenticado es representante legal
+    persona_id_usuario = getattr(request.user, 'persona_id', None)
+    if not persona_id_usuario:
+        row_p = _query_one('SELECT id FROM ctr_persona WHERE usuario_id = %s', [request.user.id])
+        persona_id_usuario = row_p['id'] if row_p else request.user.id
+
+    wards = portal.representados_de(persona_id_usuario) or []
+    if wards:
+        first_ward = wards[0]
+        sql_est = """
+            SELECT e.id as estudiante_id, p.id as persona_id,
+                   TRIM(p.nombres || ' ' || p.apellido_1 || ' ' || COALESCE(p.apellido_2, '')) as nombre_completo
+            FROM ctr_persona p
+            JOIN ctr_estudiante e ON e.persona_id = p.id
+            WHERE (e.id = %s OR p.id = %s) AND e.status = TRUE
+            LIMIT 1
+        """
+        row_ward = _query_one(sql_est, [first_ward['estudiante_id'], first_ward.get('persona_id')])
+        if row_ward:
+            return row_ward
+        return {
+            'estudiante_id': first_ward['estudiante_id'],
+            'persona_id': first_ward.get('persona_id', first_ward['estudiante_id']),
+            'nombre_completo': first_ward.get('nombre_completo', ''),
+        }
+
+    sql_fam = """
+        SELECT e.id as estudiante_id, p.id as persona_id,
+               TRIM(p.nombres || ' ' || p.apellido_1 || ' ' || COALESCE(p.apellido_2, '')) as nombre_completo
+        FROM ctr_familiar f
+        JOIN ctr_persona pf ON pf.id = f.persona_id
+        JOIN ctr_persona p ON p.id = f.personafamiliar_id
+        JOIN ctr_estudiante e ON e.persona_id = p.id
+        WHERE pf.usuario_id = %s AND f.representante = TRUE AND f.status = TRUE
+        LIMIT 1
+    """
+    rep_est = _query_one(sql_fam, [request.user.id])
+    if rep_est:
+        return rep_est
+
+    respuesta.set_success(False)
+    respuesta.set_message('Esta seccion esta disponible para estudiantes y representantes autorizados.')
+    respuesta.set_status(status.HTTP_403_FORBIDDEN)
+    return None
+
+
 def _obtener_persona_actual(request, respuesta):
     """
     Obtiene los datos de la persona asociada a request.user (estudiante, docente o personal).
@@ -102,7 +233,7 @@ class StudentSummaryView(APIView):
         if periodo_id is None:
             return respuesta.to_dict()
 
-        est = _obtener_estudiante_actual(request, respuesta)
+        est = _obtener_estudiante_o_representado(request, respuesta)
         if est is None:
             return respuesta.to_dict()
 
@@ -259,7 +390,7 @@ class StudentAttendanceView(APIView):
         if periodo_id is None:
             return respuesta.to_dict()
 
-        est = _obtener_estudiante_actual(request, respuesta)
+        est = _obtener_estudiante_o_representado(request, respuesta)
         if est is None:
             return respuesta.to_dict()
 
@@ -296,7 +427,7 @@ class StudentAttendanceLessonsView(APIView):
         if periodo_id is None:
             return respuesta.to_dict()
 
-        est = _obtener_estudiante_actual(request, respuesta)
+        est = _obtener_estudiante_o_representado(request, respuesta)
         if est is None:
             return respuesta.to_dict()
 
@@ -332,7 +463,7 @@ class StudentJustificationView(APIView):
         if periodo_id is None:
             return respuesta.to_dict()
 
-        est = _obtener_estudiante_actual(request, respuesta)
+        est = _obtener_estudiante_o_representado(request, respuesta)
         if est is None:
             return respuesta.to_dict()
 
@@ -357,7 +488,7 @@ class StudentJustificationView(APIView):
         if periodo_id is None:
             return respuesta.to_dict()
 
-        est = _obtener_estudiante_actual(request, respuesta)
+        est = _obtener_estudiante_o_representado(request, respuesta)
         if est is None:
             return respuesta.to_dict()
 
@@ -1654,7 +1785,7 @@ class StudentRubrosView(APIView):
 
     def get(self, request):
         resp = RespuestaApi()
-        est = _obtener_estudiante_actual(request, resp)
+        est = _obtener_estudiante_o_representado(request, resp)
         if est is None:
             return resp.to_dict()
 
@@ -1684,7 +1815,7 @@ class StudentRubroDetailView(APIView):
 
     def get(self, request, rubro_id):
         resp = RespuestaApi()
-        est = _obtener_estudiante_actual(request, resp)
+        est = _obtener_estudiante_o_representado(request, resp)
         if est is None:
             return resp.to_dict()
 
@@ -1730,7 +1861,7 @@ class StudentSubirComprobanteView(APIView):
 
     def post(self, request):
         resp = RespuestaApi()
-        est = _obtener_estudiante_actual(request, resp)
+        est = _obtener_estudiante_o_representado(request, resp)
         if est is None:
             return resp.to_dict()
 
